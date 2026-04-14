@@ -21,7 +21,7 @@ info:
     2. **State/county/city** - Send location components and the engine resolves the rounding rule
     3. **Explicit override** - Send `cash_rounding_mode` and `jurisdiction` for testing
     
-    ## Enacted States (as of March 2026)
+    ## Enacted States (as of April 2026)
     
     | State | Bill | Method | Enforcement |
     |-------|------|--------|-------------|
@@ -31,6 +31,8 @@ info:
     | Washington | SHB 2334 | Symmetrical | Permissive |
     | New Mexico | HB 291 | Delegated to Dept | Narrow (tax/MVD only) |
     | Utah | HB 597 | Not prescribed | Narrow (alcohol only) |
+    | Idaho | S 1350 | Swedish rounding | Permissive |
+    | Oregon | HB 4178 | Symmetrical | Permissive |
 
   version: 3.6.0
   contact:
