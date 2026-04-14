@@ -1,0 +1,1260 @@
+openapi: 3.0.3
+info:
+  title: Centsless Compliance API
+  description: |
+    Jurisdiction-aware cash rounding compliance infrastructure for the post-penny economy.
+    
+    Centsless provides real-time rounding calculations, audit trails, fraud detection,
+    and compliance certification for every cash transaction. POS vendors integrate once
+    and every merchant on their platform gets automatic multi-state compliance coverage.
+    
+    ## Authentication
+    
+    All endpoints (except health and version) require an API key passed via the `x-api-key` header.
+    Keys are issued per role: merchant keys for transaction processing, auditor keys for 
+    read-only compliance access, and admin keys for platform management.
+    
+    ## Jurisdiction Resolution
+    
+    The engine supports three integration paths:
+    1. **ZIP code** - Send `zip_code` and the engine resolves state, county, city, and rounding rule
+    2. **State/county/city** - Send location components and the engine resolves the rounding rule
+    3. **Explicit override** - Send `cash_rounding_mode` and `jurisdiction` for testing
+    
+    ## Enacted States (as of March 2026)
+    
+    | State | Bill | Method | Enforcement |
+    |-------|------|--------|-------------|
+    | Arizona | HB 2938 | Swedish rounding | Mandatory |
+    | Indiana | SB 243 | Three-tier operator choice | Permissive (retail) |
+    | Tennessee | HB 1744 | Symmetrical (safe harbor) | Voluntary |
+    | Washington | SHB 2334 | Symmetrical | Permissive |
+    | New Mexico | HB 291 | Delegated to Dept | Narrow (tax/MVD only) |
+    | Utah | HB 597 | Not prescribed | Narrow (alcohol only) |
+
+  version: 3.6.0
+  contact:
+    name: Centsless
+    email: info@centsless.org
+    url: https://centsless.org
+  license:
+    name: Proprietary
+    url: https://centsless.org/terms
+  x-patent: "Patent Pending, Application No. 63/922,987"
+
+servers:
+  - url: https://api.centsless.org/api/v1
+    description: Production
+
+security:
+  - ApiKeyAuth: []
+
+tags:
+  - name: System
+    description: Health checks, version info, and system statistics
+  - name: Transactions
+    description: Process, query, and manage cash transactions with jurisdiction-aware rounding
+  - name: Receipts
+    description: Generate compliance receipts with rounding disclosures
+  - name: Overrides
+    description: Manager-approved rounding overrides with audit trails
+  - name: Voids
+    description: Void transactions with policy enforcement and normalization
+  - name: Refunds
+    description: Process refunds with rounding normalization checks
+  - name: Tipping
+    description: FLSA-compliant tip processing, pooling, and wage theft detection
+  - name: Jurisdiction
+    description: Resolve rounding rules by ZIP code, state, county, or city
+  - name: Compliance
+    description: Void analytics, abuse detection, and override reporting
+  - name: Fraud Detection
+    description: Merchant risk profiling and fraud pattern analysis
+  - name: Audit
+    description: Immutable audit logs, hash chain verification, and security incidents
+  - name: Export
+    description: 53-field CSV export for compliance reporting
+  - name: API Key Management
+    description: Create, list, and revoke API keys (admin only)
+  - name: Vendor Management
+    description: Provision, list, and promote POS vendor partners (admin only)
+  - name: Jurisdiction Management
+    description: Add, update, and delete jurisdiction rules (admin only)
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: |
+        API key for authentication. Keys are role-scoped:
+        - **Merchant keys** (`centsless_...`): Transaction processing, receipts, tips, exports
+        - **Auditor keys** (`centsless_...`): Read-only access to audit logs, compliance data
+        - **Admin keys**: Full platform access including key management and vendor provisioning
+        - **Partner keys** (`centsless_partner_...`): Vendor-scoped access for merchant onboarding
+
+  schemas:
+    TransactionRequest:
+      type: object
+      required:
+        - merchant_id
+        - subtotal_cents
+        - tax_total_cents
+        - payment_method
+      properties:
+        merchant_id:
+          type: string
+          example: "MERCHANT-001"
+          description: Unique merchant identifier
+        store_id:
+          type: string
+          description: Store location identifier
+        terminal_id:
+          type: string
+          description: POS terminal identifier
+        cashier_id:
+          type: string
+          description: Cashier or employee identifier
+        subtotal_cents:
+          type: integer
+          example: 523
+          description: Pre-tax subtotal in cents
+        tax_total_cents:
+          type: integer
+          example: 200
+          description: Sales tax in cents (always calculated on pre-rounded amount)
+        payment_method:
+          type: string
+          enum: [cash, card, ebt, mobile]
+          example: "cash"
+          description: Payment tender type. Only cash transactions are rounded.
+        state:
+          type: string
+          example: "AZ"
+          description: Two-letter state code for jurisdiction resolution
+        county:
+          type: string
+          description: County name for sub-state jurisdiction resolution
+        city:
+          type: string
+          description: City name for municipal-level jurisdiction resolution
+        zip_code:
+          type: string
+          example: "85001"
+          description: ZIP code for automatic location and jurisdiction resolution
+        cash_rounding_mode:
+          type: string
+          enum: [swedish_rounding, mandatory_round_down, mandatory_round_up, symmetrical_rounding, nearest_nickel, none]
+          description: Explicit rounding mode override (for testing). Omit to use jurisdiction resolution.
+        is_split_tender:
+          type: boolean
+          description: Whether this is a split tender transaction
+        tenders:
+          type: array
+          description: Array of tender components for split tender transactions
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [cash, card, ebt, mobile]
+              amount_cents:
+                type: integer
+
+    TransactionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        transaction:
+          type: object
+          properties:
+            id:
+              type: string
+              example: "TXN-2026-04-14-A82C2EAA"
+            timestamp:
+              type: string
+              format: date-time
+            merchant_id:
+              type: string
+            calculation:
+              type: object
+              properties:
+                subtotal_cents:
+                  type: integer
+                  example: 523
+                tax_total_cents:
+                  type: integer
+                  example: 200
+                ledger_total_cents:
+                  type: integer
+                  example: 723
+                  description: Pre-rounded total (subtotal + tax)
+                cash_total_cents:
+                  type: integer
+                  example: 725
+                  description: Post-rounded cash total
+                rounding_delta_cents:
+                  type: integer
+                  example: 2
+                  description: Difference between ledger and cash total
+                payment_method:
+                  type: string
+                cash_rounding_mode:
+                  type: string
+                  example: "swedish_rounding"
+                jurisdiction:
+                  type: string
+                  example: "US-AZ"
+                rounding_applied:
+                  type: boolean
+                ebt_compliance_flag:
+                  type: string
+                  description: "7 CFR 278.2 compliance flag for EBT transactions"
+            compliance:
+              type: object
+              properties:
+                compliance_status:
+                  type: string
+                  enum: [PASS, WARN, FAIL]
+                  example: "PASS"
+                pass_count:
+                  type: integer
+                warn_count:
+                  type: integer
+                fail_count:
+                  type: integer
+            fraud_score:
+              type: integer
+              example: 0
+            risk_level:
+              type: string
+              enum: [NONE, LOW, MEDIUM, HIGH, CRITICAL]
+            chainPosition:
+              type: integer
+              description: Position in the immutable audit hash chain
+            auditHash:
+              type: string
+              description: SHA-256 hash of this transaction record
+
+    OverrideRequest:
+      type: object
+      required:
+        - transaction_id
+        - employee_id
+        - employee_name
+        - reason
+        - new_cash_total_cents
+      properties:
+        transaction_id:
+          type: string
+          example: "TXN-2026-04-14-A82C2EAA"
+        employee_id:
+          type: string
+          example: "EMP-001"
+        employee_name:
+          type: string
+          example: "Test Cashier"
+        reason:
+          type: string
+          enum: [customer-request, manager-discretion, pricing-error, system-error]
+          example: "customer-request"
+        new_cash_total_cents:
+          type: integer
+          example: 720
+
+    VoidRequest:
+      type: object
+      required:
+        - original_transaction_id
+        - void_reason
+        - voided_by
+      properties:
+        original_transaction_id:
+          type: string
+          example: "TXN-2026-04-14-A82C2EAA"
+        void_reason:
+          type: string
+          enum: [customer_changed_mind, pricing_error, duplicate_transaction, employee_error, fraud_suspected]
+          example: "customer_changed_mind"
+        voided_by:
+          type: string
+          example: "EMP-001"
+
+    RefundRequest:
+      type: object
+      required:
+        - original_transaction_id
+        - refund_amount
+        - void_reason
+        - voided_by
+      properties:
+        original_transaction_id:
+          type: string
+        refund_amount:
+          type: integer
+          description: Refund amount in cents
+        void_reason:
+          type: string
+          enum: [defective_product, customer_dissatisfied, wrong_item, price_adjustment]
+        voided_by:
+          type: string
+
+    TipRequest:
+      type: object
+      required:
+        - transaction_id
+        - employee_id
+        - employee_name
+        - tip_amount
+      properties:
+        transaction_id:
+          type: string
+        employee_id:
+          type: string
+        employee_name:
+          type: string
+        tip_amount:
+          type: number
+          example: 3.50
+          description: Tip amount in dollars
+
+    TipPoolRequest:
+      type: object
+      required:
+        - pool_name
+        - tip_ids
+        - distribution_method
+        - participants
+      properties:
+        pool_name:
+          type: string
+          example: "Sunday Lunch Pool"
+        tip_ids:
+          type: array
+          items:
+            type: string
+        distribution_method:
+          type: string
+          enum: [equal, weighted, hours_based]
+        participants:
+          type: array
+          items:
+            type: object
+            properties:
+              employeeId:
+                type: string
+              employeeName:
+                type: string
+
+    TipComplianceRequest:
+      type: object
+      required:
+        - state
+        - hourly_wage
+        - average_tips_per_hour
+      properties:
+        state:
+          type: string
+          example: "IN"
+        hourly_wage:
+          type: number
+          example: 7.25
+        average_tips_per_hour:
+          type: number
+          example: 3.50
+
+    ExportRequest:
+      type: object
+      properties:
+        export_mode:
+          type: string
+          enum: [standard, full, summary]
+          default: standard
+          description: "standard (53 fields), full (all fields), summary (key fields only)"
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+        payment_method:
+          type: string
+        compliance_status:
+          type: string
+
+    VendorProvisionRequest:
+      type: object
+      required:
+        - partner_name
+        - contact_email
+      properties:
+        partner_name:
+          type: string
+          example: "Toast POS Test"
+        contact_email:
+          type: string
+          example: "test@toasttab.com"
+        contact_name:
+          type: string
+          example: "Test Contact"
+        tier:
+          type: string
+          enum: [sandbox, production]
+          default: sandbox
+        modules:
+          type: array
+          items:
+            type: string
+          example: ["core", "audit"]
+        states:
+          type: array
+          items:
+            type: string
+          example: ["AZ", "IN", "TN", "WA"]
+        location_limit:
+          type: integer
+          example: 100
+        contract_arr:
+          type: number
+          example: 12000
+
+    JurisdictionRule:
+      type: object
+      required:
+        - lookup_key
+        - jurisdiction_id
+        - jurisdiction_level
+        - rounding_mode
+        - enforcement
+        - status
+      properties:
+        lookup_key:
+          type: string
+          example: "AZ"
+        jurisdiction_id:
+          type: string
+          example: "US-AZ"
+        jurisdiction_level:
+          type: string
+          enum: [federal, state, county, city]
+        rounding_mode:
+          type: string
+          enum: [swedish_rounding, mandatory_round_down, mandatory_round_up, symmetrical_rounding, nearest_nickel, nearest_cent, nearest_dime, none]
+        enforcement:
+          type: string
+          enum: [mandatory, permissive, voluntary, none]
+        status:
+          type: string
+          enum: [enacted, pending, proposed, failed, no_legislation]
+        legislation:
+          type: string
+          example: "AZ HB 2938"
+        effective_date:
+          type: string
+          format: date
+        notes:
+          type: string
+        source_url:
+          type: string
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+
+paths:
+  # ============ SYSTEM ============
+  /health:
+    get:
+      tags: [System]
+      summary: Health check
+      description: Returns platform status, database connectivity, jurisdiction cache status, and compliance certifications. No authentication required.
+      security: []
+      responses:
+        '200':
+          description: System health status
+
+  /version:
+    get:
+      tags: [System]
+      summary: Version info
+      description: Returns current API version, engine version, and available endpoints.
+      security: []
+      responses:
+        '200':
+          description: Version information
+
+  /stats:
+    get:
+      tags: [System]
+      summary: System statistics
+      description: Returns transaction counts, hash chain status, tip totals, void/refund/override counts, and security incident summary.
+      responses:
+        '200':
+          description: System statistics
+
+  # ============ TRANSACTIONS ============
+  /transaction:
+    post:
+      tags: [Transactions]
+      summary: Process a transaction
+      description: |
+        Submit a transaction for jurisdiction-aware rounding calculation. The engine resolves
+        the correct rounding rule based on the merchant's location and applies it to cash
+        transactions. Card and EBT transactions pass through unrounded.
+        
+        **Jurisdiction resolution priority:**
+        1. ZIP code (resolves state, county, city, and rounding rule)
+        2. State/county/city (resolves rounding rule)
+        3. Explicit `cash_rounding_mode` override (for testing)
+        
+        **Key rules:**
+        - Sales tax is always calculated on the pre-rounded amount
+        - EBT transactions are never rounded (7 CFR 278.2)
+        - Card transactions are never rounded
+        - Every transaction receives a compliance check and fraud score
+        - Every transaction is added to the immutable audit hash chain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionRequest'
+            examples:
+              arizona_cash:
+                summary: Arizona cash transaction (Swedish rounding)
+                value:
+                  merchant_id: "TEST-001"
+                  subtotal_cents: 523
+                  tax_total_cents: 200
+                  payment_method: "cash"
+                  state: "AZ"
+              zip_resolution:
+                summary: ZIP code resolution (automatic)
+                value:
+                  merchant_id: "TEST-001"
+                  subtotal_cents: 523
+                  tax_total_cents: 200
+                  payment_method: "cash"
+                  zip_code: "85001"
+              ebt_exempt:
+                summary: EBT transaction (never rounded)
+                value:
+                  merchant_id: "TEST-001"
+                  subtotal_cents: 523
+                  tax_total_cents: 200
+                  payment_method: "ebt"
+                  state: "AZ"
+      responses:
+        '200':
+          description: Transaction processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /transactions:
+    get:
+      tags: [Transactions]
+      summary: Query transactions
+      description: List transactions with optional filtering by merchant, state, type, and date range. Supports pagination.
+      parameters:
+        - name: merchant_id
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [SALE, VOID, REFUND]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Transaction list
+
+  /transaction/{id}:
+    get:
+      tags: [Transactions]
+      summary: Get transaction by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Transaction details
+        '404':
+          description: Transaction not found
+
+  # ============ RECEIPTS ============
+  /transaction/{id}/receipt:
+    get:
+      tags: [Receipts]
+      summary: Generate compliance receipt
+      description: |
+        Generate a compliance receipt for a transaction. Includes rounding disclosure
+        language as required by state law (e.g., WA SHB 2334 requires disclosure).
+        
+        **Formats:**
+        - `merchant` (default): Customer-facing with rounding disclosure
+        - `audit`: Full audit receipt with hash chain and fraud score
+        - `pos`: Minimal POS format (raw cents only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [merchant, audit, pos]
+            default: merchant
+      responses:
+        '200':
+          description: Compliance receipt
+
+  # ============ OVERRIDES ============
+  /transaction/override:
+    post:
+      tags: [Overrides]
+      summary: Override rounding on a transaction
+      description: |
+        Apply a manager-approved override to a transaction's rounding amount.
+        Creates an immutable override audit record with employee attribution,
+        reason code, and a separate override hash.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OverrideRequest'
+      responses:
+        '200':
+          description: Override applied
+
+  # ============ VOIDS ============
+  /transaction/void:
+    post:
+      tags: [Voids]
+      summary: Void a transaction
+      description: |
+        Void a transaction. Creates a reversal record with negative amounts.
+        Enforces time-limit, amount-threshold, and void-reason policies.
+        The rounding delta is reversed correctly. Hash chain integrity is maintained.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoidRequest'
+      responses:
+        '200':
+          description: Transaction voided
+
+  # ============ REFUNDS ============
+  /transaction/refund:
+    post:
+      tags: [Refunds]
+      summary: Process a refund
+      description: |
+        Process a refund with rounding normalization check. The engine verifies
+        that the refund rounding delta correctly reverses the original transaction's
+        rounding direction. Normalization failures are flagged but do not block
+        the refund.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefundRequest'
+      responses:
+        '200':
+          description: Refund processed
+
+  # ============ TIPPING ============
+  /tip/cash:
+    post:
+      tags: [Tipping]
+      summary: Process a cash tip
+      description: Record a cash tip with FLSA-compliant ceiling rounding (always rounds in employee favor).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TipRequest'
+      responses:
+        '200':
+          description: Cash tip processed
+
+  /tip/credit-card:
+    post:
+      tags: [Tipping]
+      summary: Process a credit card tip
+      description: Record a credit card tip with audit trail.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TipRequest'
+      responses:
+        '200':
+          description: Credit card tip processed
+
+  /tip/pool/create:
+    post:
+      tags: [Tipping]
+      summary: Create a tip pool
+      description: Create a tip pool for distributing tips among eligible employees. Supports equal, weighted, and hours-based distribution methods.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TipPoolRequest'
+      responses:
+        '200':
+          description: Tip pool created
+
+  /tip/pool/distribute:
+    post:
+      tags: [Tipping]
+      summary: Distribute a tip pool
+      description: Calculate and distribute pooled tips to participants using the defined distribution method.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pool_id]
+              properties:
+                pool_id:
+                  type: string
+      responses:
+        '200':
+          description: Tip pool distributed
+
+  /tip/payout:
+    post:
+      tags: [Tipping]
+      summary: Process employee payout
+      description: Process a tip payout to an employee. Rounding always favors the employee (FLSA compliance).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [employee_id, employee_name, payout_amount, payout_method]
+              properties:
+                employee_id:
+                  type: string
+                employee_name:
+                  type: string
+                payout_amount:
+                  type: number
+                payout_method:
+                  type: string
+                  enum: [cash, check, direct_deposit]
+      responses:
+        '200':
+          description: Payout processed
+
+  /tip/adjust:
+    post:
+      tags: [Tipping]
+      summary: Adjust a tip amount
+      description: Adjust a previously recorded tip with reason tracking.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tip_id, new_amount, reason]
+              properties:
+                tip_id:
+                  type: string
+                new_amount:
+                  type: number
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Tip adjusted
+
+  /tip/validate-compliance:
+    post:
+      tags: [Tipping]
+      summary: Validate tip credit compliance
+      description: Check if a merchant's tipping practices comply with state-specific tip credit regulations and FLSA requirements.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TipComplianceRequest'
+      responses:
+        '200':
+          description: Compliance validation result
+
+  /analytics/tips:
+    get:
+      tags: [Tipping]
+      summary: Tip analytics
+      description: Aggregate tip statistics including totals by payment method, average tip amounts, and pool distributions.
+      responses:
+        '200':
+          description: Tip analytics
+
+  /analytics/tip-wage-theft:
+    get:
+      tags: [Tipping]
+      summary: Wage theft detection
+      description: Analyze tip patterns for potential wage theft indicators including tip skimming, unauthorized deductions, and below-minimum-wage violations.
+      responses:
+        '200':
+          description: Wage theft analysis
+
+  # ============ JURISDICTION ============
+  /jurisdiction/zip/{zip_code}:
+    get:
+      tags: [Jurisdiction]
+      summary: Resolve jurisdiction by ZIP code
+      description: |
+        Look up a ZIP code and resolve the full jurisdiction chain: state, county, city,
+        rounding mode, enforcement level, and legislation reference. Uses the 33,000+ ZIP
+        code Census database with hierarchical resolution (city > county > state > federal).
+      parameters:
+        - name: zip_code
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "85001"
+      responses:
+        '200':
+          description: Jurisdiction resolution result
+
+  /jurisdiction/{state}:
+    get:
+      tags: [Jurisdiction]
+      summary: Get jurisdiction rule by state
+      parameters:
+        - name: state
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "AZ"
+      responses:
+        '200':
+          description: Jurisdiction rule
+
+  /jurisdiction/{state}/{county}:
+    get:
+      tags: [Jurisdiction]
+      summary: Get jurisdiction rule by state and county
+      parameters:
+        - name: state
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: county
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Jurisdiction rule
+
+  /jurisdiction/{state}/{county}/{city}:
+    get:
+      tags: [Jurisdiction]
+      summary: Get jurisdiction rule by state, county, and city
+      parameters:
+        - name: state
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: county
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: city
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Jurisdiction rule
+
+  /jurisdictions:
+    get:
+      tags: [Jurisdiction]
+      summary: List all jurisdiction rules
+      description: Returns all jurisdiction rules in the database including enacted, pending, and proposed legislation.
+      responses:
+        '200':
+          description: All jurisdiction rules
+
+  # ============ COMPLIANCE ============
+  /analytics/voids:
+    get:
+      tags: [Compliance]
+      summary: Void analytics
+      description: Aggregate void statistics including counts, rates, amounts, and normalization check results.
+      responses:
+        '200':
+          description: Void analytics
+
+  /analytics/void-abuse:
+    get:
+      tags: [Compliance]
+      summary: Void abuse detection
+      description: Analyze void patterns for potential abuse including high void rates, normalization failures, and suspicious timing patterns.
+      responses:
+        '200':
+          description: Void abuse analysis
+
+  /overrides/report:
+    get:
+      tags: [Compliance]
+      summary: Override report
+      description: Report of all rounding overrides with employee attribution, reason codes, and delta changes.
+      responses:
+        '200':
+          description: Override report
+
+  # ============ FRAUD DETECTION ============
+  /merchant/{merchant_id}/risk-profile:
+    get:
+      tags: [Fraud Detection]
+      summary: Merchant risk profile
+      description: |
+        Generate a comprehensive risk profile for a merchant including fraud score,
+        rounding analysis (round-up/down ratios, penny ending distribution),
+        override patterns, and void rates.
+      parameters:
+        - name: merchant_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Risk profile
+
+  /admin/fraud-overview:
+    get:
+      tags: [Fraud Detection]
+      summary: All merchants fraud overview
+      description: Rank all merchants by risk score with summary statistics. Identifies merchants with suspicious rounding patterns or high override/void rates.
+      responses:
+        '200':
+          description: Fraud overview
+
+  # ============ AUDIT ============
+  /admin/audit-logs:
+    get:
+      tags: [Audit]
+      summary: Query audit logs
+      description: Retrieve immutable audit log entries with cryptographic hashes.
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: event_type
+          in: query
+          schema:
+            type: string
+        - name: user_id
+          in: query
+          schema:
+            type: string
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Audit log entries
+
+  /admin/verify-hash-chain:
+    get:
+      tags: [Audit]
+      summary: Verify hash chain integrity
+      description: |
+        Verify the integrity of the entire transaction hash chain. Each transaction's
+        hash includes the previous transaction's hash, creating a tamper-evident linked
+        list. Returns the total count, verified count, break count, and details of any
+        breaks found.
+      responses:
+        '200':
+          description: Hash chain verification result
+
+  /admin/security-incidents:
+    get:
+      tags: [Audit]
+      summary: Security incidents
+      description: List security incidents including unauthorized access attempts, rate limit violations, and fraud detection alerts.
+      parameters:
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [LOW, MEDIUM, HIGH, CRITICAL]
+        - name: resolved
+          in: query
+          schema:
+            type: string
+            enum: ["true", "false"]
+      responses:
+        '200':
+          description: Security incidents
+
+  # ============ EXPORT ============
+  /export:
+    post:
+      tags: [Export]
+      summary: Export transactions as CSV
+      description: |
+        Export all transactions as a CSV file with 53 fields (standard mode) or
+        key fields only (summary mode). Supports filtering by date range, payment
+        method, and compliance status. Used for compliance reporting, regulatory
+        submissions, and audit evidence.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportRequest'
+      responses:
+        '200':
+          description: CSV file download
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  # ============ API KEY MANAGEMENT ============
+  /admin/keys:
+    post:
+      tags: [API Key Management]
+      summary: Create an API key
+      description: Generate a new API key with role-based permissions. The raw key is returned once and cannot be retrieved again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role, merchant_id]
+              properties:
+                role:
+                  type: string
+                  enum: [merchant, auditor, admin]
+                merchant_id:
+                  type: string
+      responses:
+        '201':
+          description: Key created (raw key shown once)
+    get:
+      tags: [API Key Management]
+      summary: List all API keys
+      description: List all API keys with previews (raw keys are never shown after creation).
+      responses:
+        '200':
+          description: API key list
+
+  /admin/keys/{keyId}:
+    delete:
+      tags: [API Key Management]
+      summary: Revoke an API key
+      parameters:
+        - name: keyId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Key revoked
+
+  # ============ VENDOR MANAGEMENT ============
+  /admin/vendors/provision:
+    post:
+      tags: [Vendor Management]
+      summary: Provision a POS vendor
+      description: |
+        Manually provision a new POS vendor partner. Creates the partner record
+        and generates a partner API key. The raw key is returned once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VendorProvisionRequest'
+      responses:
+        '201':
+          description: Vendor provisioned
+
+  /admin/vendors:
+    get:
+      tags: [Vendor Management]
+      summary: List all vendors
+      description: List all provisioned POS vendor partners with merchant counts and key status.
+      responses:
+        '200':
+          description: Vendor list
+
+  /admin/vendors/{partnerId}/status:
+    get:
+      tags: [Vendor Management]
+      summary: Vendor operational status
+      description: Live operational status for a vendor including merchant counts, transaction volume, and key info.
+      parameters:
+        - name: partnerId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Vendor status
+
+  /admin/vendors/{partnerId}/promote:
+    patch:
+      tags: [Vendor Management]
+      summary: Promote vendor to production
+      description: |
+        Promote a vendor from sandbox to production tier. Requires dual-control
+        verification (two co-founders must independently verify with TOTP 2FA).
+        Deactivates the sandbox key and issues a new production key.
+      parameters:
+        - name: partnerId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dual_control_proof]
+              properties:
+                dual_control_proof:
+                  type: object
+                  properties:
+                    dual_control:
+                      type: boolean
+                    initiator_name:
+                      type: string
+                    confirmer_name:
+                      type: string
+                    totp_verified:
+                      type: boolean
+      responses:
+        '200':
+          description: Vendor promoted
+
+  # ============ JURISDICTION MANAGEMENT ============
+  /admin/jurisdictions:
+    post:
+      tags: [Jurisdiction Management]
+      summary: Add or update a jurisdiction rule
+      description: |
+        Add or update a jurisdiction rounding rule. When a governor signs a bill,
+        call this endpoint to make it live immediately. Changes propagate to the
+        in-memory cache within 5 minutes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JurisdictionRule'
+      responses:
+        '200':
+          description: Jurisdiction saved
+
+  /admin/jurisdictions/{lookup_key}:
+    get:
+      tags: [Jurisdiction Management]
+      summary: Get a jurisdiction rule
+      parameters:
+        - name: lookup_key
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Jurisdiction rule
+    delete:
+      tags: [Jurisdiction Management]
+      summary: Delete a jurisdiction rule
+      parameters:
+        - name: lookup_key
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Jurisdiction deleted
+
+  /admin/jurisdiction-status:
+    get:
+      tags: [Jurisdiction Management]
+      summary: Jurisdiction cache status
+      description: Returns the number of cached jurisdiction rules, data source, and last refresh time.
+      responses:
+        '200':
+          description: Cache status

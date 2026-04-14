@@ -1,0 +1,122 @@
+---
+title: Quickstart
+description: Process your first transaction in under 5 minutes
+---
+
+# Quickstart
+
+This guide walks you through processing your first jurisdiction-aware cash transaction.
+
+## Prerequisites
+
+- An API key (contact Centsless to obtain sandbox credentials)
+- A tool for making HTTP requests (curl, Postman, or your preferred language)
+
+## Step 1: Check the API is live
+
+```bash
+curl https://api.centsless.org/api/v1/health
+```
+
+You should see a `200 OK` response with system status.
+
+## Step 2: Process a cash transaction
+
+Send a cash transaction with an Arizona ZIP code. The engine will resolve the jurisdiction and apply Swedish rounding automatically.
+
+```bash
+curl -X POST https://api.centsless.org/api/v1/transaction \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: YOUR_API_KEY" \
+  -d '{
+    "merchant_id": "YOUR-MERCHANT-ID",
+    "subtotal_cents": 523,
+    "tax_total_cents": 200,
+    "payment_method": "cash",
+    "zip_code": "85001"
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "transaction": {
+    "id": "TXN-2026-04-14-A82C2EAA",
+    "calculation": {
+      "subtotal_cents": 523,
+      "tax_total_cents": 200,
+      "ledger_total_cents": 723,
+      "cash_total_cents": 725,
+      "rounding_delta_cents": 2,
+      "payment_method": "cash",
+      "cash_rounding_mode": "swedish_rounding",
+      "jurisdiction": "US-AZ",
+      "rounding_applied": true
+    },
+    "compliance": {
+      "compliance_status": "PASS"
+    },
+    "fraud_score": 0,
+    "risk_level": "NONE"
+  }
+}
+```
+
+The customer pays **$7.25** instead of $7.23. The 2-cent rounding delta is applied per Arizona HB 2938 (mandatory Swedish rounding).
+
+## Step 3: Try a different state
+
+Change the state to Indiana to see a different rounding methodology:
+
+```bash
+curl -X POST https://api.centsless.org/api/v1/transaction \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: YOUR_API_KEY" \
+  -d '{
+    "merchant_id": "YOUR-MERCHANT-ID",
+    "subtotal_cents": 523,
+    "tax_total_cents": 200,
+    "payment_method": "cash",
+    "state": "IN"
+  }'
+```
+
+Same input, same amounts, but Indiana SB 243 gives the operator a choice of rounding method. The jurisdiction-awareness is the key differentiator.
+
+## Step 4: Verify EBT exemption
+
+EBT/SNAP transactions are never rounded, regardless of jurisdiction:
+
+```bash
+curl -X POST https://api.centsless.org/api/v1/transaction \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: YOUR_API_KEY" \
+  -d '{
+    "merchant_id": "YOUR-MERCHANT-ID",
+    "subtotal_cents": 523,
+    "tax_total_cents": 200,
+    "payment_method": "ebt",
+    "state": "AZ"
+  }'
+```
+
+The response will show `rounding_delta_cents: 0` and `ebt_compliance_flag` confirming 7 CFR 278.2 compliance.
+
+## Step 5: Generate a receipt
+
+Using the transaction ID from Step 2:
+
+```bash
+curl https://api.centsless.org/api/v1/transaction/TXN-ID-HERE/receipt \
+  -H "x-api-key: YOUR_API_KEY"
+```
+
+The receipt includes the rounding disclosure language required by state law.
+
+## Next steps
+
+- [Jurisdiction Resolution](/jurisdiction-resolution) to understand the full resolution cascade
+- [Rounding Methods](/concepts/rounding-methods) for details on each methodology
+- [API Reference](/api-reference/overview) for the complete endpoint documentation

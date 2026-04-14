@@ -1,0 +1,148 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Centsless API Documentation",
+  "logo": {
+    "dark": "/logo/centsless-logo-dark.png",
+    "light": "/logo/centsless-logo-light.png"
+  },
+  "favicon": "/favicon.png",
+  "colors": {
+    "primary": "#C9884C",
+    "light": "#F5E6D3",
+    "dark": "#0F0D0B",
+    "anchors": {
+      "from": "#C9884C",
+      "to": "#C87533"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "Website",
+      "url": "https://centsless.org"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Get API Key",
+    "url": "https://centsless.org/contact"
+  },
+  "tabs": [
+    {
+      "name": "API Reference",
+      "url": "api-reference"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": [
+        "introduction",
+        "authentication",
+        "quickstart",
+        "jurisdiction-resolution"
+      ]
+    },
+    {
+      "group": "Core Concepts",
+      "pages": [
+        "concepts/rounding-methods",
+        "concepts/enacted-states",
+        "concepts/ebt-exemption",
+        "concepts/split-tender",
+        "concepts/audit-trail"
+      ]
+    },
+    {
+      "group": "API Reference",
+      "pages": [
+        "api-reference/overview"
+      ]
+    },
+    {
+      "group": "Transactions",
+      "pages": [
+        "api-reference/transactions/process",
+        "api-reference/transactions/query",
+        "api-reference/transactions/get-by-id",
+        "api-reference/transactions/receipt"
+      ]
+    },
+    {
+      "group": "Overrides, Voids, and Refunds",
+      "pages": [
+        "api-reference/transactions/override",
+        "api-reference/transactions/void",
+        "api-reference/transactions/refund"
+      ]
+    },
+    {
+      "group": "Tipping",
+      "pages": [
+        "api-reference/tipping/cash-tip",
+        "api-reference/tipping/credit-card-tip",
+        "api-reference/tipping/create-pool",
+        "api-reference/tipping/distribute-pool",
+        "api-reference/tipping/payout",
+        "api-reference/tipping/adjust",
+        "api-reference/tipping/analytics",
+        "api-reference/tipping/wage-theft",
+        "api-reference/tipping/validate-compliance"
+      ]
+    },
+    {
+      "group": "Jurisdiction",
+      "pages": [
+        "api-reference/jurisdiction/resolve-zip",
+        "api-reference/jurisdiction/resolve-state",
+        "api-reference/jurisdiction/list-all"
+      ]
+    },
+    {
+      "group": "Compliance and Audit",
+      "pages": [
+        "api-reference/compliance/void-analytics",
+        "api-reference/compliance/void-abuse",
+        "api-reference/compliance/override-report",
+        "api-reference/audit/logs",
+        "api-reference/audit/verify-hash-chain",
+        "api-reference/audit/security-incidents"
+      ]
+    },
+    {
+      "group": "Fraud Detection",
+      "pages": [
+        "api-reference/fraud/merchant-risk-profile",
+        "api-reference/fraud/overview"
+      ]
+    },
+    {
+      "group": "Export",
+      "pages": [
+        "api-reference/export/csv"
+      ]
+    },
+    {
+      "group": "Administration",
+      "pages": [
+        "api-reference/admin/create-key",
+        "api-reference/admin/list-keys",
+        "api-reference/admin/revoke-key",
+        "api-reference/admin/provision-vendor",
+        "api-reference/admin/list-vendors",
+        "api-reference/admin/vendor-status",
+        "api-reference/admin/promote-vendor",
+        "api-reference/admin/manage-jurisdictions"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "linkedin": "https://www.linkedin.com/company/centsless"
+  },
+  "openapi": "openapi.yaml",
+  "api": {
+    "baseUrl": "https://api.centsless.org/api/v1",
+    "auth": {
+      "method": "key",
+      "name": "x-api-key"
+    }
+  }
+}

@@ -1,0 +1,89 @@
+---
+title: Jurisdiction Resolution
+description: How the engine determines the correct rounding rule for any location
+---
+
+# Jurisdiction Resolution
+
+The Centsless engine resolves the correct rounding rule for any merchant location using a hierarchical cascade: city, county, state, then federal default. This ensures that if a city or county enacts a more specific rule than the state, the most local rule applies.
+
+## Resolution cascade
+
+```
+ZIP Code (85001)
+  -> City (Phoenix)
+    -> County (Maricopa)
+      -> State (Arizona)
+        -> Federal (default)
+```
+
+The engine checks each level in order and returns the first match.
+
+## Three integration paths
+
+### Path 1: ZIP code (recommended)
+
+Send the merchant's ZIP code. The engine resolves the full location chain automatically using a Census database of 33,000+ U.S. ZIP codes.
+
+```json
+{
+  "merchant_id": "MERCHANT-001",
+  "subtotal_cents": 523,
+  "tax_total_cents": 200,
+  "payment_method": "cash",
+  "zip_code": "85001"
+}
+```
+
+This is the simplest integration. The POS vendor only needs to know the merchant's ZIP code.
+
+### Path 2: State/county/city
+
+Send the location components directly. Useful when the POS vendor already has structured address data.
+
+```json
+{
+  "merchant_id": "MERCHANT-001",
+  "subtotal_cents": 523,
+  "tax_total_cents": 200,
+  "payment_method": "cash",
+  "state": "AZ",
+  "county": "Maricopa",
+  "city": "Phoenix"
+}
+```
+
+### Path 3: Explicit override
+
+Send the rounding mode and jurisdiction directly. Used for testing, development, and edge case handling.
+
+```json
+{
+  "merchant_id": "MERCHANT-001",
+  "subtotal_cents": 523,
+  "tax_total_cents": 200,
+  "payment_method": "cash",
+  "cash_rounding_mode": "swedish_rounding",
+  "jurisdiction": "US-AZ"
+}
+```
+
+## Standalone ZIP lookup
+
+You can resolve a ZIP code without processing a transaction:
+
+```bash
+curl https://api.centsless.org/api/v1/jurisdiction/zip/85001 \
+  -H "x-api-key: YOUR_API_KEY"
+```
+
+Returns the full resolution chain including state, county, city, rounding mode, enforcement level, and legislation reference.
+
+## Coverage
+
+The jurisdiction database currently covers:
+
+- **33,791 ZIP codes** mapped to state, county, and city
+- **6 enacted states** with active rounding legislation
+- **55+ bills tracked** across 35+ states with pending or proposed legislation
+- **Automatic updates** when new legislation is enacted via the admin API

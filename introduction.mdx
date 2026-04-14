@@ -1,0 +1,72 @@
+---
+title: Introduction
+description: Jurisdiction-aware cash rounding compliance infrastructure for the post-penny economy
+---
+
+# Centsless API
+
+Centsless is the compliance infrastructure layer for cash rounding in the post-penny economy. POS vendors integrate once through our API, and every merchant on their platform gets automatic multi-state compliance coverage with a cryptographic audit trail on every transaction.
+
+## Why Centsless exists
+
+Penny production ceased in November 2025. Six states have enacted cash rounding legislation, each with a different methodology and enforcement model. No federal standard exists. Every cash transaction in America now operates without a compliance framework.
+
+Centsless solves this by providing a single API that resolves the correct rounding rule for any merchant location across all enacted jurisdictions.
+
+## What the API does
+
+<CardGroup cols={2}>
+  <Card title="Jurisdiction Resolution" icon="map-pin">
+    Send a ZIP code or state. Get back the correct rounding rule, enforcement level, and legislation reference. Covers 33,000+ U.S. ZIP codes.
+  </Card>
+  <Card title="Transaction Processing" icon="cash-register">
+    Submit a cash transaction. Receive the legally correct rounded amount, compliance certification, and fraud score in real time.
+  </Card>
+  <Card title="Audit Trail" icon="shield-check">
+    Every transaction is hashed into an immutable chain. Overrides, voids, and refunds are tracked with employee attribution.
+  </Card>
+  <Card title="Compliance Export" icon="file-csv">
+    Export a 53-field CSV with the complete transaction lifecycle for regulatory reporting and audit evidence.
+  </Card>
+</CardGroup>
+
+## Enacted states
+
+| State | Bill | Method | Enforcement | Scope |
+|-------|------|--------|-------------|-------|
+| Arizona | HB 2938 | Swedish rounding | Mandatory | All retail cash |
+| Indiana | SB 243 | Three-tier operator choice | Permissive (retail) | All cash + govt taxes |
+| Tennessee | HB 1744 | Symmetrical (safe harbor) | Voluntary | Retail cash |
+| Washington | SHB 2334 | Symmetrical | Permissive | In-person cash |
+| New Mexico | HB 291 | Delegated to Dept | Narrow | Tax/MVD fees only |
+| Utah | HB 597 | Not prescribed | Narrow | Alcohol sales only |
+
+All six states require sales tax to be calculated on the pre-rounded amount.
+
+## Integration paths
+
+The API supports three ways to resolve jurisdiction:
+
+1. **ZIP code**: Send `zip_code` and the engine resolves everything automatically
+2. **State/county/city**: Send location components for direct resolution
+3. **Explicit override**: Send `cash_rounding_mode` for testing and development
+
+## Key rules
+
+- Cash transactions are rounded per the jurisdiction rule
+- Card transactions are never rounded
+- EBT/SNAP transactions are never rounded (7 CFR 278.2)
+- Sales tax is always calculated on the pre-rounded amount
+- Every transaction receives a compliance check and fraud score
+- Every transaction is added to the immutable audit hash chain
+
+## Getting started
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="key" href="/authentication">
+    Learn how API keys work and how to authenticate requests.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Process your first transaction in under 5 minutes.
+  </Card>
+</CardGroup>
