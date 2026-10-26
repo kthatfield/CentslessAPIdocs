@@ -1,0 +1,224 @@
+/*
+ * Centsless documentation theme: copper and zinc.
+ *
+ * Copper is the accent (links, active navigation, inline code, callout rules).
+ * Zinc carries the neutrals (text, borders, code surfaces, dark background).
+ * The pairing is the one-cent coin itself: a copper surface over a zinc core.
+ *
+ * Mintlify includes every .css file in the content directory on every page.
+ * Selectors below use the documented ids plus plain element selectors scoped
+ * to the content area; Mintlify notes that its element references can change.
+ */
+
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+
+:root {
+  /* Copper */
+  --cu-50:  #FBF3EC;
+  --cu-100: #F4E1D0;
+  --cu-200: #E9C3A2;
+  --cu-300: #DDA476;
+  --cu-400: #D9925A;
+  --cu-500: #C87533;   /* brand copper */
+  --cu-600: #A85F26;
+  --cu-700: #864A1D;
+  --cu-800: #633616;
+
+  /* Zinc */
+  --zn-50:  #FAFAFA;
+  --zn-100: #F4F4F5;
+  --zn-200: #E4E4E7;
+  --zn-300: #D4D4D8;
+  --zn-400: #A1A1AA;
+  --zn-500: #71717A;
+  --zn-600: #52525B;
+  --zn-700: #3F3F46;
+  --zn-800: #27272A;
+  --zn-900: #18181B;
+  --zn-950: #09090B;
+
+  /* Brand surfaces */
+  --panel: #F7F3EE;
+
+  --content-width: 46rem;
+  --sidebar-width: 17rem;
+}
+
+/* Typography: labels, code and keys in IBM Plex Mono */
+code, kbd, pre, samp,
+#sidebar [data-layout-item="sidebar"] .text-xs,
+.toc, #table-of-contents-content {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Body text and headings on zinc, light mode */
+#content-area {
+  color: var(--zn-800);
+}
+#content-area h1, #content-area h2, #content-area h3, #content-area h4 {
+  color: var(--zn-950);
+}
+#content-area a:not(.card) {
+  color: var(--cu-600);
+  text-decoration-color: var(--cu-300);
+}
+#content-area a:not(.card):hover {
+  color: var(--cu-700);
+  text-decoration-color: var(--cu-500);
+}
+
+/* Inline code: copper on zinc */
+#content-area :not(pre) > code {
+  color: var(--cu-700);
+  background: var(--zn-100);
+  border: 1px solid var(--zn-200);
+  border-radius: 4px;
+  padding: 0.08em 0.35em;
+  font-size: 0.92em;
+}
+
+/* Code blocks: zinc surface with a copper rule */
+#content-area pre {
+  background: var(--zn-900);
+  border: 1px solid var(--zn-700);
+  border-top: 3px solid var(--cu-500);
+  border-radius: 8px;
+}
+#content-area pre code {
+  color: var(--zn-100);
+}
+
+/* Tables */
+#content-area table {
+  border-collapse: collapse;
+}
+#content-area th {
+  color: var(--zn-600);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-bottom: 2px solid var(--cu-500);
+}
+#content-area td {
+  border-bottom: 1px solid var(--zn-200);
+}
+
+/* Cards and accordions */
+#content-area .card {
+  border-color: var(--zn-200);
+  background: #FFFFFF;
+}
+#content-area .card:hover {
+  border-color: var(--cu-400);
+}
+[data-component-part="card-icon"] {
+  color: var(--cu-500);
+}
+#content-area .accordion {
+  border-color: var(--zn-200);
+}
+
+/* Callouts: a copper left rule on a panel surface */
+#content-area .callout {
+  background: var(--panel);
+  border-left: 4px solid var(--cu-500);
+  border-radius: 6px;
+}
+
+/* Sidebar and navigation */
+#sidebar, #navbar {
+  border-color: var(--zn-200);
+}
+#sidebar a {
+  color: var(--zn-600);
+}
+#sidebar a:hover {
+  color: var(--zn-900);
+}
+#sidebar a[aria-current="page"],
+#sidebar .text-primary {
+  color: var(--cu-600);
+}
+#sidebar a[aria-current="page"] {
+  background: var(--cu-50);
+}
+#topbar-cta-button {
+  background: var(--cu-500);
+  color: #FFFFFF;
+}
+#topbar-cta-button:hover {
+  background: var(--cu-600);
+}
+
+/* Footer */
+#footer, footer {
+  border-top: 1px solid var(--zn-200);
+  color: var(--zn-500);
+}
+
+/* Dark mode: zinc core, lighter copper for contrast */
+.dark #content-area {
+  color: var(--zn-200);
+}
+.dark #content-area h1, .dark #content-area h2, .dark #content-area h3, .dark #content-area h4 {
+  color: var(--zn-50);
+}
+.dark #content-area a:not(.card) {
+  color: var(--cu-400);
+  text-decoration-color: var(--cu-600);
+}
+.dark #content-area a:not(.card):hover {
+  color: var(--cu-300);
+}
+.dark #content-area :not(pre) > code {
+  color: var(--cu-300);
+  background: var(--zn-800);
+  border-color: var(--zn-700);
+}
+.dark #content-area pre {
+  background: var(--zn-950);
+  border-color: var(--zn-800);
+  border-top-color: var(--cu-400);
+}
+.dark #content-area th {
+  color: var(--zn-400);
+  border-bottom-color: var(--cu-400);
+}
+.dark #content-area td {
+  border-bottom-color: var(--zn-800);
+}
+.dark #content-area .card {
+  background: var(--zn-900);
+  border-color: var(--zn-800);
+}
+.dark #content-area .card:hover {
+  border-color: var(--cu-500);
+}
+.dark #content-area .accordion {
+  border-color: var(--zn-800);
+}
+.dark #content-area .callout {
+  background: var(--zn-900);
+  border-left-color: var(--cu-400);
+}
+.dark #sidebar, .dark #navbar {
+  border-color: var(--zn-800);
+}
+.dark #sidebar a {
+  color: var(--zn-400);
+}
+.dark #sidebar a:hover {
+  color: var(--zn-100);
+}
+.dark #sidebar a[aria-current="page"],
+.dark #sidebar .text-primary {
+  color: var(--cu-400);
+}
+.dark #sidebar a[aria-current="page"] {
+  background: var(--zn-800);
+}
+.dark #footer, .dark footer {
+  border-top-color: var(--zn-800);
+  color: var(--zn-500);
+}

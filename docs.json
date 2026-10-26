@@ -28,7 +28,7 @@
   "background": {
     "color": {
       "light": "#F7F3EE",
-      "dark": "#141210"
+      "dark": "#18181B"
     }
   },
   "navigation": {
@@ -141,7 +141,11 @@
       "display": "simple"
     },
     "examples": {
-      "languages": ["curl", "javascript", "python"]
+      "languages": [
+        "curl",
+        "javascript",
+        "python"
+      ]
     }
   },
   "contextual": {
