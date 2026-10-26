@@ -1,0 +1,72 @@
+---
+title: "Refunds, voids and overrides"
+description: "Reversing or adjusting a sealed transaction without breaking the evidence."
+---
+
+A sealed transaction is never edited. A refund, a void or an override is a new record, hash-linked to the original, with the employee who acted and the reason.
+
+## Refunds
+
+`POST /api/v1/transaction/refund` reverses all or part of a sale. The refund is calculated on the absolute amount with the same rule that governed the sale, then negated, so the rounding delta reverses exactly and the refund record cites the same statute.
+
+```json
+{
+  "original_transaction_id": "TXN-2026-10-25-8F360056",
+  "refund_amount": 1075,
+  "void_reason": "customer-request",
+  "voided_by": "EMP-014"
+}
+```
+
+`refund_amount` is in cents. A partial refund is allowed up to the full amount. In Vermont the refund is issued in the exact amount paid and is not rounded (9 V.S.A. 2(b)(2)); the record carries `refund_policy: "exact"`. The response includes a `normalizationCheck`; a refund whose cash amount would not be a multiple of the rounding unit under the governing rule is rejected with `400` and the check's detail, so a register cannot hand back an amount that cannot be made in coin.
+
+The original is marked `refunded`. Both records remain in the chain.
+
+## Voids
+
+`POST /api/v1/transaction/void` cancels a sale within the void window.
+
+```json
+{
+  "original_transaction_id": "TXN-2026-10-25-8F360056",
+  "void_reason": "duplicate-transaction",
+  "voided_by": "EMP-014"
+}
+```
+
+| Policy | Value |
+|---|---|
+| Void window | 24 hours from the original |
+| Manager approval | Required at $100.00 and above, and for the reasons `incorrect-amount`, `fraud-suspected` and `manager-override` |
+| EBT voids | Manager approval required; 2-hour window |
+| Allowed reasons | `customer-request`, `transaction-error`, `incorrect-amount`, `duplicate-transaction`, `fraud-suspected`, `manager-override` |
+
+A void outside policy returns `400 VOID_POLICY_VIOLATION` and is logged as a security incident with the employee id.
+
+## Overrides
+
+`POST /api/v1/transaction/override` records a manual adjustment of the cash total after the engine's calculation, for the cases a statute or a drawer leaves to the cashier: the customer has exact change, the drawer is out of nickels, a manager approves an exception.
+
+```json
+{
+  "transaction_id": "TXN-2026-10-25-8F360056",
+  "employee_id": "EMP-014",
+  "employee_name": "A. Cashier",
+  "reason": "customer_short_exact_change",
+  "new_cash_total_cents": 1073,
+  "manager_id": "MGR-2",
+  "notes": "Customer tendered exact ledger amount"
+}
+```
+
+| Rule | Detail |
+|---|---|
+| Threshold | An override that moves the cash total by more than two cents requires `manager_id`; without it the request is refused with `OVERRIDE_DENIED` |
+| Reasons | `customer_short_exact_change`, `customer_requested_round_down`, `cash_drawer_coin_shortage`, `manager_approved_exception`, `other_see_notes`; free text is accepted and recorded as given |
+| Evidence | The override is hashed over the original calculation and the override request, linked to the transaction, and reported in `GET /api/v1/overrides/report` |
+
+An override changes what the register collected. It does not change the governing rule or the statutory basis, which stay on the original record so an auditor can see both the rule and the departure from it. Statutes that let a customer pay the unrounded amount with exact tender (North Carolina G.S. 66-515(b)(4), for example) are the typical reason.
+
+## Analytics
+
+`GET /api/v1/analytics/voids` summarizes void volume and reasons; `GET /api/v1/analytics/void-abuse` flags employees whose void patterns are outliers; `GET /api/v1/overrides/report` lists overrides with employee attribution. All three need `audit:read`.

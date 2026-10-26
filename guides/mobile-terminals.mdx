@@ -1,0 +1,81 @@
+---
+title: "Mobile terminals"
+description: "Food trucks, market stalls and delivery: keeping a registered home location while telling the engine where this sale happened."
+---
+
+A terminal that moves keeps a registered location as its default and may tell the engine, per transaction, where the sale actually took place. The engine geocodes the override live, uses it for the decision, and seals it as an override alongside the registered location.
+
+## Register the terminal as mobile
+
+```json
+{ "location_id": "TRUCK-3", "location_name": "Taco truck 3", "address": "1200 Commissary Rd, Orlando, FL 32801", "mobile": true }
+```
+
+`mobile: true` is informational; it marks the location in the portal and in the needs-review list. The registered address is still resolved and still governs when no override is sent.
+
+## Send the sale's location
+
+Coordinates are preferred; a street address also works.
+
+```json
+{
+  "merchant_id": "TACOS-1",
+  "location_id": "TRUCK-3",
+  "subtotal_cents": 1250,
+  "tax_total_cents": 81,
+  "payment_method": "cash",
+  "transaction_location": { "latitude": 28.61219, "longitude": -80.80762 }
+}
+```
+
+```json
+{
+  "transaction_location": { "address": "555 S Washington Ave, Titusville, FL 32796", "zip_code": "32796" }
+}
+```
+
+## What the record shows
+
+```json
+"calculation": { "jurisdiction_data_source": "database+location_override" },
+"location_resolution": {
+  "location_id": "92018fdd-…",
+  "method": "address_geocode",
+  "county_geoid": "12095",
+  "override": {
+    "method": "coordinate_lookup",
+    "confidence": "high",
+    "source": "census",
+    "latitude": 28.61219,
+    "longitude": -80.80762,
+    "state_fips": "12",
+    "county_geoid": "12009",
+    "place_geoid": "1271900",
+    "time_zone": "America/New_York"
+  }
+}
+```
+
+The decision used the override's boundaries (Brevard County, Titusville). The registered location (Orange County) is still in the record so the two can be compared.
+
+## When the override cannot be resolved
+
+If the coordinates are out of range or the geocoder returns nothing, the registered location governs and the record says the override was requested and not resolved:
+
+```json
+"location_resolution": {
+  "method": "address_geocode",
+  "county_geoid": "12095",
+  "override": { "requested": true, "resolved": false, "note": "transaction_location could not be resolved; the registered location governs" }
+}
+```
+
+Nothing falls back silently. A POS that wants to surface this to the operator can check `location_resolution.override.resolved`.
+
+## Latency
+
+An override is the one path that geocodes on the transaction. Expect the call to take the geocoder's round trip (typically under a second with the Census provider). Registered locations never pay this cost.
+
+## Time zone
+
+An override carries the time zone of the state it resolves to, which matters for a truck crossing between Central and Eastern time in Florida, Tennessee or Kentucky. A `transaction_timestamp` with the terminal's own offset still wins.

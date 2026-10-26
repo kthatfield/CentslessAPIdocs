@@ -1,0 +1,83 @@
+---
+title: "Introduction"
+description: "What the Centsless Decision and Evidence Engine does, who it is for, and how it fits into a point of sale stack."
+---
+
+The United States Mint ended production of the one-cent coin in November 2025. Since then, 23 states have written cash rounding into statute, and the obligations they impose do not match one another. Some permit rounding, some require it. Some cover every merchant, some cover only government collections, liquor sales, or tax payments. Some took effect on signing; others take effect on a date months later. The federal Common Cents Act (H.R. 10167) has passed both chambers of Congress and, as of October 25, 2026, has not been signed.
+
+Centsless answers one question for every cash transaction: **which rule governs this sale, at this terminal, on this date, and what evidence supports the outcome.**
+
+## What the engine does
+
+<Steps>
+  <Step title="Resolves the place of sale">
+    A terminal's registered street address is resolved once to the boundaries that decide jurisdiction (state, county, incorporated place, tribal area). A ZIP code is a postal route, not a boundary, so the engine treats it as a cross-check rather than the key. See [Jurisdiction resolution](/concepts/jurisdiction-resolution).
+  </Step>
+  <Step title="Finds the governing rule">
+    Rules are evaluated from the most specific level to the least: tribal, city, county, state, then the federal default. A rule governs only when its status is binding, the transaction type is inside its scope, its activation conditions are met, and its effective date has arrived in the sale's local calendar date. See [Rule activation](/concepts/rule-activation).
+  </Step>
+  <Step title="Calculates the rounding">
+    The cash total is rounded by the method the governing rule prescribes. Sales tax is computed on the pre-rounded amount. Card, mobile, and EBT tenders are never rounded. See [Rounding methods](/concepts/rounding-methods).
+  </Step>
+  <Step title="Seals the evidence">
+    Every transaction is written to a SHA-256 hash chain together with the statute that governed it, the activation state, and the location resolution. A record cannot be re-attributed to a different rule afterward without breaking the chain. See [The audit record](/concepts/audit-record).
+  </Step>
+</Steps>
+
+## Who integrates
+
+<CardGroup cols={3}>
+  <Card title="POS platforms" icon="cash-register" href="/guides/register-a-merchant">
+    Integrate once, register each merchant and terminal location, and every merchant on the platform is covered as rules change.
+  </Card>
+  <Card title="Merchants" icon="store" href="/guides/process-a-transaction">
+    Send the transaction, receive the rounded cash total and the evidence record. Opt in to early adoption where a law is enacted but not yet effective.
+  </Card>
+  <Card title="Auditors and finance" icon="file-shield" href="/guides/exports-and-analytics">
+    Read-only keys for audit logs, hash chain verification, receipts, and a 53-field CSV export.
+  </Card>
+</CardGroup>
+
+## Where it sits in the stack
+
+The engine activates after sales tax has been calculated and before the cash drawer opens. It never touches the ledger total. It returns the cash total the customer pays, the rounding delta, and the evidence. The ledger keeps the exact amount; the register collects the rounded one.
+
+```text
+item pricing  →  sales tax  →  Centsless  →  cash drawer
+                                  │
+                                  ├─ governing rule and activation state
+                                  ├─ rounded cash total and delta
+                                  └─ hash-chained evidence record
+```
+
+## What is new in 3.8.0
+
+<AccordionGroup>
+  <Accordion title="Location-first resolution">
+    Transactions can be keyed by a registered `location_id`. The registered address, geocoded to Census boundaries at registration, governs. A request `zip_code` that disagrees with the registered location is flagged in the sealed record. Mobile terminals can send a `transaction_location` override.
+  </Accordion>
+  <Accordion title="Effective-date activation">
+    Enacted laws govern only on or after their effective date in the sale's local calendar date. Rules that are enacted but not yet effective appear in `pending_rules` with a countdown. Merchants can opt in to early adoption; such transactions are recorded as voluntary, never as compliance.
+  </Accordion>
+  <Accordion title="Statute in the evidence">
+    Every record carries a `statutory_basis` block: legislation, session law, codified citation, status, activation state, tier, local transaction date, and dataset version. The hash chain covers it.
+  </Accordion>
+  <Accordion title="23 enacted states with tiers">
+    Every record was read from the enacted text. North Carolina carries three separate rules, Kentucky four, Indiana two, Virginia and California carry local-option tiers, and five states round one- and two-cent totals up rather than down. The engine resolves the tier from the transaction type. See [Enacted states](/concepts/enacted-states).
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+Centsless provides the decision and the evidence. It does not provide legal advice and does not adjudicate compliance. Every statutory record in the engine names its primary source; consult the enacted text and your counsel for obligations that depend on facts the engine does not see.
+</Note>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    First transaction in five minutes.
+  </Card>
+  <Card title="API reference" icon="code" href="/api-reference/overview">
+    Every endpoint, with request and response schemas.
+  </Card>
+</CardGroup>

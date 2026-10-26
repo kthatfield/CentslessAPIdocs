@@ -1,0 +1,55 @@
+---
+title: "Locations and review"
+description: "Listing a merchant's locations, correcting an address, re-resolving, and working the needs-review queue."
+---
+
+A location's resolution is the foundation of every decision made at that terminal, so partners can see it, correct it, and re-run it.
+
+## List a merchant's locations
+
+```bash
+curl "https://api.centsless.org/api/v1/partner/merchants/$MERCHANT_ID/locations" \
+  -H "x-api-key: $PARTNER_KEY"
+```
+
+Each location returns its address, state, governing legislation, and a `resolution` block with method, confidence, provider, vintage, identifiers, notes and the review flag.
+
+## Correct an address
+
+`PATCH /api/v1/partner/merchants/{merchantId}/locations/{locationId}` accepts `address`, `zip_code`, `time_zone`, `mobile` and `location_name`. Any change to the address or ZIP re-resolves the location and increments its `resolution_version`.
+
+```bash
+curl -X PATCH "https://api.centsless.org/api/v1/partner/merchants/$MERCHANT_ID/locations/L3" \
+  -H "x-api-key: $PARTNER_KEY" \
+  -H "content-type: application/json" \
+  -d '{ "address": "555 S Washington Ave, Titusville, FL 32796", "zip_code": "32796" }'
+```
+
+`{locationId}` accepts your `location_id` or the internal UUID. `time_zone` must be an IANA zone such as `America/Chicago`.
+
+## Re-resolve without changing anything
+
+`POST /api/v1/partner/merchants/{merchantId}/locations/{locationId}/resolve` runs resolution again with the current provider and dataset vintage. Use it after a geocoder outage or when a rooftop provider is introduced.
+
+## The needs-review queue
+
+`GET /api/v1/admin/locations/needs-review` (admin key) lists every active location whose resolution is missing, unresolved, or flagged. Pass `only_unresolved=true` to see only the ones with no boundary at all.
+
+| Flag | What it means | What to do |
+|---|---|---|
+| `zip_mismatch` | The geocoded ZIP differs from the registered ZIP | Confirm the address with the merchant. The geocoded boundaries are already in use. |
+| `zip_fallback` | No street match; resolved from the ZIP's primary county | Correct the street address so the location can be matched. |
+| `unresolved` | Nothing resolved | Supply a full address. |
+| `street_interpolated` | Informational: Census matches along the street segment | For a terminal within a few metres of a city or county line, consider a rooftop geocode. |
+| `census_designated_place` | The place is not an incorporated municipality | Informational; no city ordinance can apply here. |
+| `state_default_time_zone` | The state spans two zones and the state default was used | Set `time_zone` if the terminal is in the other zone. |
+
+A flag never blocks transactions. It marks the record as one that a person should look at, and the sealed record carries `needs_review: true` until it is cleared.
+
+## Backfilling locations registered before 3.8.0
+
+Locations registered before location-first resolution have no boundaries stored. Centsless runs a backfill that geocodes each one from its registered address and reports the ones that need a human. The partner sees the results through the list endpoint and the needs-review queue.
+
+## Deactivating a location
+
+Deactivate through the merchant management endpoints. An inactive location is refused on transactions with `409 LOCATION_INACTIVE` so a closed site cannot keep producing records.

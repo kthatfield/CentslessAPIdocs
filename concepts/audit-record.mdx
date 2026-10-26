@@ -1,0 +1,70 @@
+---
+title: "The audit record"
+description: "What is sealed for every transaction, how the hash chain works, and how to verify it."
+---
+
+Every transaction produces a tamper-evident record. The record is written twice: into the database as the transaction row, and into a per-merchant, per-day JSONL file as a hash-chained line. Both carry the same statute and the same location resolution.
+
+## The hash chain
+
+Each transaction carries `previousHash`, `chainPosition` and `auditHash`. The audit hash is a SHA-256 digest over the transaction id, its timestamp, the cash total, the previous hash, and (hash schema 2, introduced in 3.7.0) a digest of the `statutory_basis` block and a digest of the `location_resolution` block. Changing any of those after the fact changes the hash, and every later record's `previousHash` stops matching.
+
+`GET /api/v1/admin/verify-hash-chain` walks the chain from the genesis record and reports every break.
+
+```json
+{
+  "chain_integrity": {
+    "total_transactions": 84,
+    "verified": 84,
+    "broken": 0,
+    "integrity_percentage": "100.00",
+    "breaks": [],
+    "source": "database"
+  }
+}
+```
+
+Records written before 3.7.0 use hash schema 1 (no statute digest). Verification compares links, so a chain that spans both schemas verifies.
+
+## The statutory basis
+
+`statutory_basis` is the block an auditor reads first. It answers "what law governed, and why did the engine think so."
+
+| Field | Meaning |
+|---|---|
+| `jurisdiction_id`, `jurisdiction_level`, `lookup_key` | Which rule, at which level |
+| `legislation`, `session_law`, `citation` | The bill, the chapter or act, the codified section |
+| `status` | `enacted`, `ordinance`, `default_practice`, or `manual` for an explicit override |
+| `activation_state` | `in_force`, `default_practice`, `early_adoption_voluntary` (the states that can govern) |
+| `obligation`, `enforcement`, `rounding_mode` | What the rule requires and how it rounds |
+| `tier_id`, `tier_citation` | The tier that applied, where the state has more than one rule |
+| `effective_date`, `sunset_date` | The rule's dates |
+| `local_transaction_date`, `local_date_source`, `time_zone` | The date the activation test used and how it was derived |
+| `conditions` | Activation conditions and whether each was satisfied, with its basis |
+| `source_url`, `last_verified`, `dataset_version` | Where the record came from and which dataset release it belongs to |
+
+A transaction sent with an explicit `cash_rounding_mode` override is sealed with `status: "manual"` and no statute. That path is for testing.
+
+## The location resolution
+
+When a transaction used a registered location, `location_resolution` records how the place of sale was established: method, confidence, provider, dataset vintage, the Census identifiers, the terminal's time zone, whether the location was flagged for review, any mobile override, and the ZIP cross-check. See [Jurisdiction resolution](/concepts/jurisdiction-resolution).
+
+## The file record
+
+The JSONL writer files each record under `audit-logs/merchants/{merchant_id}/{YYYY-MM-DD}/transactions.jsonl` with its own `prev_hash` and `record_hash` over a canonical (key-sorted) serialization. The file record carries the amounts, the method, the statutory basis, the location resolution, the transaction type and the terminal.
+
+<Note>
+Versions before 3.7.0 passed the wrong argument shape to the file writer, which filed every record under merchant `UNKNOWN` with blank fields. Records written by those versions are in the database with their correct merchant; only the file copies are affected.
+</Note>
+
+## Reversals and overrides
+
+Voids, refunds and overrides are hash-linked to the original transaction and carry employee attribution. An override above two cents requires `manager_id`. See [Refunds, voids and overrides](/guides/refunds-voids-and-overrides).
+
+## Retention and export
+
+Transactions can be listed, retrieved by id, rendered as receipts, and exported as a 53-field CSV. Audit logs and security incidents are available to `auditor` and `admin` keys. See [Exports and analytics](/guides/exports-and-analytics).
+
+## Vocabulary
+
+Centsless describes its records as **tamper-evident** and **hash-chained**. A record can be altered by someone with write access to the store; the chain makes the alteration visible. Nothing here is a claim of immutability.

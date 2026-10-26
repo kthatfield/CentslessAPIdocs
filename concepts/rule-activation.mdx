@@ -1,0 +1,79 @@
+---
+title: "Rule activation"
+description: "Why an enacted law does not govern until its effective date arrives in the sale's local calendar date, and how the engine reports what is coming."
+---
+
+An enacted statute is not the same as a statute in force. Connecticut's rounding sections were enacted June 4, 2026 and take effect January 1, 2027. Oklahoma's state agency rule took effect November 1, 2026 and its political subdivision rule takes effect July 1, 2027. California's merchant rule was signed September 30, 2026 and is operative July 1, 2027. The engine evaluates every rule against the transaction's own date, so nothing needs to be scheduled and nothing needs to be redeployed when a date arrives.
+
+## The four tests
+
+A rule governs a transaction only when all four hold. Each failure has a named activation state so the caller and the auditor can see why the rule fell through.
+
+| Test | Fails as | Example |
+|---|---|---|
+| **Binding status.** Only `enacted` laws and adopted local `ordinance` rows can govern. Guidance, introduced, passed, awaiting signature, pending and failed rows never round. | `not_binding` | New York has passed a bill through both chambers; it does not govern until signed. |
+| **Scope.** The transaction type is inside the rule or one of its tiers. | `out_of_scope` | Utah covers cash liquor purchases; a retail sale in Utah falls to the federal default. |
+| **Conditions.** Any activation condition on the rule or tier is satisfied. | `awaiting_condition` | California SB 1005 applies to a local agency only after that agency adopts it by resolution (`local_adoption`). |
+| **Dates.** The sale's local calendar date is on or after the effective date and before any sunset. | `pending_effective`, `expired` | Oklahoma agency payments on October 31 versus November 1, 2026. Virginia's local-ordinance authority expires July 1, 2027. |
+
+When all four pass, the state is `in_force`. When the federal default applies because nothing else governed, the state is `default_practice`. A local research record that has not been approved for the engine reports `not_engine_supported` and never governs.
+
+## The local calendar date
+
+Effective dates are calendar dates in the jurisdiction. A sale at 11:30 p.m. Central time on October 31 is still October 31 in Oklahoma even though it is already November 1 in UTC. The engine resolves the local date in this order:
+
+1. **The POS clock.** If `transaction_timestamp` carries its own UTC offset (`2026-11-01T00:15:00-05:00`), the date portion as written is the sale's local date. This is the most faithful record of the day the sale happened at the register. `local_date_source` reads `sender_offset`.
+2. **The location's time zone.** Otherwise the instant is converted into the registered location's `time_zone` (or the state's primary zone). `local_date_source` reads `jurisdiction_time_zone`.
+3. **UTC** when neither is available.
+
+<Tip>
+Send `transaction_timestamp` with the terminal's own offset. It removes any ambiguity in the states that span two time zones and it is what an auditor will compare against the register tape.
+</Tip>
+
+## Pending rules and the countdown
+
+When a rule is enacted but not yet effective, the transaction still receives a decision (from the next level that governs, usually the federal default) and the pending rule is reported with a countdown.
+
+```json
+"statutory_basis": { "legislation": "H.R. 10167", "status": "default_practice", "activation_state": "default_practice" },
+"pending_rules": [
+  {
+    "level": "state",
+    "lookup_key": "OK",
+    "tier_id": "OK-AGENCY",
+    "citation": "62 O.S. 9002 (HB 3075)",
+    "effective_date": "2026-11-01",
+    "days_until_effective": 7,
+    "local_transaction_date": "2026-10-25",
+    "obligation": "obligates",
+    "rounding_mode": "symmetrical_rounding"
+  }
+]
+```
+
+`GET /api/v1/jurisdictions/countdown` lists every binding rule or tier whose effective date is still ahead, with days remaining as of today in the rule's own time zone. Obligation changes count as events too: North Carolina ABC stores move from `permits` to `obligates` on July 1, 2027.
+
+## Early adoption
+
+A merchant may apply an enacted-but-not-yet-effective rule now, either per merchant (`PUT /api/v1/merchants/{merchant_id}/early-adoption`) or per request (`early_adoption: true`). The rule then governs, and the activation state is `early_adoption_voluntary`. The record never describes such a transaction as compliance with a law in force. See [Early adoption and operator choice](/guides/early-adoption-and-operator-choice).
+
+## Obligation can change on a date
+
+A tier may carry an obligation schedule. North Carolina's ABC store rule permits rounding from July 2, 2026 and requires it from July 1, 2027 (S.L. 2026-31, s. 14.(c) rewrites "may" to "shall"). Oklahoma political subdivisions may round from November 1, 2026 and must from July 1, 2027 (62 O.S. 9002(B)). The engine reports the obligation that applies on the sale's date.
+
+## Activation conditions
+
+Some statutes apply only when something else is true.
+
+| Condition | Satisfied when | Where it appears |
+|---|---|---|
+| `local_adoption` | The paying agency or merchant has recorded that the locality adopted the authority (`local_adoption: true` on the merchant or the request) | California SB 1005 local agencies; Virginia localities under Chapter 713, enactment clause 2 |
+| `penny_not_in_production` | Recorded in the dataset as satisfied, with its basis (the Mint ended production in November 2025) | North Carolina (all three rules), Florida, Tennessee's Consumer Protection Act exemption |
+| `penny_not_available_or_used` | Recorded as satisfied with its basis | Arizona |
+| `exact_change_unavailable` | Recorded as satisfied while the one-cent coin is out of production; a seller with pennies on hand settles to the cent | Idaho, Tennessee |
+
+Conditions and their basis are written into the sealed record.
+
+## Sunsets
+
+Virginia's local-ordinance authority expires no later than July 1, 2027. A tier with a `sunset_date` stops governing on that date and reports `expired`.

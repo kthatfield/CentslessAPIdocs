@@ -1,0 +1,36 @@
+---
+title: "Exports and analytics"
+description: "Querying transactions, exporting CSV, reading audit logs, and verifying the chain."
+---
+
+## Query transactions
+
+`GET /api/v1/transactions` lists sealed transactions with filters for `merchant_id`, `state`, `type` (`SALE`, `VOID`, `REFUND`), `start_date`, `end_date`, `limit` (default 100) and `offset`. `GET /api/v1/transaction/{id}` returns one. Both need `transaction:read`.
+
+## Export CSV
+
+`POST /api/v1/export` returns a CSV. `export_mode` selects the column set.
+
+| Mode | Columns | Permission |
+|---|---|---|
+| `standard` | 53 fields: identifiers, amounts, method, jurisdiction, statute, activation, hashes, compliance, fraud score, override and void flags | `export:standard` |
+| `full` | Every field on the record, including the location resolution and the full statutory basis | `export:full` (auditor) |
+| `summary` | Identifiers and amounts | `export:standard` |
+
+Filters match the transactions query. The export is generated from the database, so it reflects every sealed record, not only the ones held in memory by the running instance.
+
+## Audit logs and incidents
+
+`GET /api/v1/admin/audit-logs` lists engine events (transactions created, overrides, voids, key changes, jurisdiction changes, server starts) with the acting key and source IP. `GET /api/v1/admin/security-incidents` lists rejected requests, rate-limit hits and policy violations. Both need `audit:read`.
+
+## Verify the chain
+
+`GET /api/v1/admin/verify-hash-chain` walks the whole chain and reports breaks. Run it as part of any audit and after any database maintenance. See [The audit record](/concepts/audit-record).
+
+## Statistics and risk
+
+`GET /api/v1/stats` returns counts and totals for the key's scope. `GET /api/v1/merchant/{merchant_id}/risk-profile` and `GET /api/v1/admin/fraud-overview` summarize the fraud engine's scoring; scores are signals for review, not findings.
+
+## Partner analytics
+
+A partner key's `GET /api/v1/partner/analytics` returns merchant and location counts, locations by state and by rounding method across the partner's portfolio.

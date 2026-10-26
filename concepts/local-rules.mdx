@@ -1,0 +1,57 @@
+---
+title: "Local rules"
+description: "County, city and tribal rules keyed by Census boundaries, and the research records that are reported but never applied until approved."
+---
+
+A county or city can adopt a policy for the cash it collects at its own counters, and that policy binds the government office without reaching the shop across the street. The engine models these as rules at the county, city and tribal levels, keyed by the Census identifiers that location resolution produces.
+
+## How a local rule reaches a transaction
+
+1. The registered location carries `county_geoid`, `place_geoid` and, where applicable, `aiannh_geoid`.
+2. The candidate chain checks the tribal, city and county levels before the state. A rule at one of those levels is matched by GEOID (or, for legacy records, by `STATE:COUNTY:CITY` name).
+3. The rule's scope decides whether it reaches the transaction. A county collection policy lists `government`, `tax_payment` and `local_government` as its transaction types; a retail sale in the same county is `out_of_scope` and falls through to the state.
+4. Activation is evaluated exactly as for a state rule: binding status (`ordinance`), conditions, effective date, sunset.
+
+## Research records are not rules
+
+The Centsless Legislative Observatory tracks local developments at four evidence tiers: verified (government document read), corroborated (government records confirm the action; details unverified), media-reported, and research leads. The engine carries the verified and corroborated records in its table with `engine_supported: false`.
+
+A record that is not engine-supported **never governs**. It is reported on every transaction at a location it reaches, so a partner and an auditor can see that a local instrument exists, and it is excluded from the countdown.
+
+```json
+"local_records": [
+  {
+    "level": "city",
+    "key": "FL:BREVARD:TITUSVILLE",
+    "jurisdiction_id": "US-FL-BREVARD-TITUSVILLE",
+    "status": "ordinance",
+    "activation_state": "not_engine_supported",
+    "engine_supported": false,
+    "instrument": "Administrative notice (not numbered)",
+    "evidence_tier": "verified"
+  }
+]
+```
+
+The records carried as of dataset `2026.10.25`:
+
+| Record | Jurisdiction | Instrument | Evidence tier | Status |
+|---|---|---|---|---|
+| Lancaster County | Pennsylvania (county GEOID 42071) | Resolution No. 15 of 2026 | Verified | In force, active |
+| City of Titusville | Florida (place GEOID 1271900) | Administrative notice | Verified | In force, active |
+| Fairfax County | Virginia (county GEOID 51059) | Uncodified ordinance | Corroborated | Adopted; operational status unknown |
+| City and County of Honolulu | Hawaii (county GEOID 15003) | Bill 20 (2026) | Corroborated | Proposed, not active |
+
+All four cover government collections only.
+
+## Approving a local rule
+
+When the instrument has been read and its method, scope, obligation and dates are known, Centsless approves the record by updating the row with those parameters and `engine_supported: true`. From that moment it governs the transactions in its scope at locations inside its boundary, and its citation is sealed into those records. Approval is a data change, not a deploy.
+
+<Note>
+Approval is deliberate and per record. Media reports and meeting summaries are not instruments. To our knowledge, none of the four records above has been encoded from its instrument as of this dataset version.
+</Note>
+
+## Tribal rules
+
+Tribal jurisdiction is resolved from the reservation, trust-land, Hawaiian home land, Alaska Native area and Oklahoma tribal statistical area layers of the Census geocoder, and from a `tribal` name on legacy requests. No tribal rounding rule is in the dataset as of `2026.10.25`; the level exists so that one can be added without a code change.

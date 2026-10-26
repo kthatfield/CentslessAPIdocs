@@ -1,0 +1,60 @@
+---
+title: "EBT and non-cash tender"
+description: "What is never rounded, how split tenders are handled, and how the engine isolates the cash portion."
+---
+
+## EBT and SNAP are never rounded
+
+Supplemental Nutrition Assistance Program benefits are federally funded and are settled to the cent. 7 CFR 278.2 governs how retailers accept them. The engine treats `payment_method: "ebt"` (and `"snap"`) as an unconditional exemption: the cash total equals the ledger total, `rounding_applied` is `false`, and no state or local rule, merchant setting or override can change that. The compliance engine raises a failure if an EBT transaction ever arrives with a non-zero delta.
+
+## Card and mobile tenders are never rounded
+
+Rounding exists because the one-cent coin is leaving circulation. A card or mobile payment settles electronically to the cent. `payment_method` of `card` or `mobile` returns the ledger total unchanged.
+
+## Split tenders
+
+A transaction paid with more than one tender sends a `tenders` array. The amounts must sum to the ledger total.
+
+```json
+{
+  "merchant_id": "FL-STORE-1",
+  "subtotal_cents": 2000,
+  "tax_total_cents": 0,
+  "zip_code": "32780",
+  "tenders": [
+    { "type": "ebt",  "amount_cents": 1500 },
+    { "type": "cash", "amount_cents": 500 }
+  ]
+}
+```
+
+The engine isolates the cash portion, rounds it under the governing rule, and leaves the other tenders untouched. The response carries a `split_tender` block that shows what happened to each tender.
+
+```json
+"split_tender": {
+  "is_split_tender": true,
+  "tender_count": 2,
+  "cash_portion_cents": 500,
+  "non_cash_portion_cents": 1500,
+  "tenders": [
+    { "type": "ebt",  "amount_cents": 1500, "rounding_applied": false, "rounding_exempt_reason": "7 CFR 278.2 - SNAP benefits exempt from rounding" },
+    { "type": "cash", "amount_cents": 500,  "rounding_applied": true,  "rounding_delta_cents": 0, "rounded_amount_cents": 500 }
+  ],
+  "total_after_rounding": 2000
+}
+```
+
+When the cash portion is rounded, the subtotal and tax are apportioned to it in the ratio of the whole transaction so that the engine's tax-on-pre-rounded-amount rule holds for the portion as well.
+
+## Statutory language the engine follows
+
+Most of the 23 enacted statutes say the same thing in their own words: rounding applies to the cash portion of a mixed tender and non-cash methods settle to the cent. North Carolina G.S. 66-515 and 18B-804A say rounding "applies only to the portion of the transaction paid in cash." California Civ. Code 1789.62(e) says the merchant "shall round the portion of the total transaction price equivalent to the amount paid with legal tender." Kentucky's four sections say non-cash transactions "shall continue to be settled to the cent without rounding." The engine's split-tender behaviour implements those clauses.
+
+## Tender vocabulary
+
+| `payment_method` or `tenders[].type` | Rounded |
+|---|---|
+| `cash` | Yes, under the governing rule |
+| `card` | No |
+| `mobile` | No |
+| `ebt` | No, unconditionally |

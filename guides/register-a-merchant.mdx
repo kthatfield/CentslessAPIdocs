@@ -1,0 +1,103 @@
+---
+title: "Register a merchant"
+description: "How a POS platform registers a merchant and its terminal locations, and what the engine returns about each location."
+---
+
+A partner registers each merchant once. Registration issues the merchant its own API key, creates a location record for every terminal site, resolves each location to its boundaries, and reports the rule that governs there today.
+
+<Steps>
+  <Step title="Collect the street address of every location">
+    A full street address is what makes location-first resolution work. A ZIP code alone still registers, but at low confidence and flagged for review. Include `time_zone` for terminals in a part of a state that is not in the state's primary zone, and `mobile: true` for terminals that move.
+  </Step>
+
+  <Step title="Call the register endpoint with the partner key">
+    ```bash
+    curl -X POST https://api.centsless.org/api/v1/partner/merchants/register \
+      -H "x-api-key: $PARTNER_KEY" \
+      -H "content-type: application/json" \
+      -d '{
+        "merchant_name": "Space Coast Hardware",
+        "external_id": "SCH-1",
+        "contact_email": "owner@example.com",
+        "locations": [
+          { "location_id": "L1", "location_name": "Titusville", "address": "555 S Washington Ave, Titusville, FL 32780", "zip_code": "32780" },
+          { "location_id": "L2", "location_name": "Oklahoma City", "address": { "street": "200 N Walker Ave", "city": "Oklahoma City", "state": "OK", "zip": "73102" } }
+        ]
+      }'
+    ```
+
+    `address` may be a single string or an object with `street`, `city`, `state` and `zip`. `external_id` and each `location_id` are your identifiers; use them on every transaction afterward.
+  </Step>
+
+  <Step title="Store the merchant key and read each location's resolution">
+    The response contains the merchant key once. Store it; it cannot be retrieved later.
+
+    ```json
+    {
+      "success": true,
+      "merchant": {
+        "merchant_id": "6f1c…",
+        "external_id": "SCH-1",
+        "api_key": "centsless_merch_…",
+        "locations": [
+          {
+            "location_id": "L1",
+            "internal_location_id": "92018fdd-…",
+            "state": "FL",
+            "jurisdiction_id": "US-FL",
+            "legislation": "SB 1074",
+            "legislation_status": "enacted",
+            "rounding_method": "symmetrical_rounding",
+            "obligation": "permits",
+            "governing_today": { "lookup_key": "FL", "activation_state": "in_force", "rounding_mode": "symmetrical_rounding" },
+            "pending_rules": [],
+            "local_records": [
+              { "key": "FL:BREVARD:TITUSVILLE", "engine_supported": false, "instrument": "Administrative notice (not numbered)" }
+            ],
+            "resolution": {
+              "method": "address_geocode",
+              "confidence": "medium",
+              "source": "census",
+              "county_geoid": "12009",
+              "place_geoid": "1271900",
+              "time_zone": "America/New_York",
+              "needs_review": true,
+              "zip_cross_check": { "registered_zip": "32780", "geocoded_zip": "32796", "agrees": false },
+              "notes": [ { "code": "zip_mismatch", "detail": "Registered ZIP 32780 differs from geocoded ZIP 32796; the geocoded boundaries are used, review the address" } ]
+            }
+          },
+          {
+            "location_id": "L2",
+            "state": "OK",
+            "legislation_status": "enacted",
+            "governing_today": { "lookup_key": "US-FEDERAL", "activation_state": "default_practice" },
+            "pending_rules": [
+              { "lookup_key": "OK", "tier_id": "OK-AGENCY", "effective_date": "2026-11-01", "days_until_effective": 7 },
+              { "lookup_key": "OK", "tier_id": "OK-SUBDIVISION", "effective_date": "2027-07-01", "days_until_effective": 249 }
+            ],
+            "resolution": { "method": "address_geocode", "confidence": "medium", "county_geoid": "40109", "place_geoid": "4055000", "time_zone": "America/Chicago", "needs_review": false }
+          }
+        ]
+      }
+    }
+    ```
+
+    Three things to read on each location: `governing_today` (what applies to a retail sale right now), `pending_rules` (what is coming for that state, with countdowns), and `resolution.needs_review` (whether a human should confirm the address).
+  </Step>
+
+  <Step title="Resolve anything flagged for review">
+    A `zip_mismatch` note usually means the merchant's mailing ZIP differs from the ZIP of the street segment; confirm the address and move on. A `zip_fallback` or `unresolved` method means the geocoder could not match the street; correct the address with `PATCH /api/v1/partner/merchants/{merchantId}/locations/{locationId}` and the location is re-resolved. See [Locations and review](/guides/locations-and-review).
+  </Step>
+</Steps>
+
+## Bulk registration
+
+`POST /api/v1/partner/merchants/bulk-register` accepts up to 500 merchants in one request and returns the registered and failed sets separately. A failure for one merchant does not stop the others.
+
+## Admin on behalf of a partner
+
+An admin key can call any `/api/v1/partner/*` endpoint for a given partner by passing `?partner_id=…` or the `x-partner-id` header.
+
+## What registration does not do
+
+Registration does not create a portal login for the merchant unless a contact email is supplied and the portal account service is configured; the response says whether one was created. It does not validate that the business exists at the address; it resolves where the address is.

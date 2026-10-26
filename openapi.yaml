@@ -1,48 +1,23 @@
 openapi: 3.0.3
 info:
-  title: Centsless Compliance API
+  title: Centsless Decision and Evidence Engine API
+  version: 3.8.1
   description: |
-    Jurisdiction-aware cash rounding compliance infrastructure for the post-penny economy.
-    
-    Centsless provides real-time rounding calculations, audit trails, fraud detection,
-    and compliance certification for every cash transaction. POS vendors integrate once
-    and every merchant on their platform gets automatic multi-state compliance coverage.
-    
-    ## Authentication
-    
-    All endpoints (except health and version) require an API key passed via the `x-api-key` header.
-    Keys are issued per role: merchant keys for transaction processing, auditor keys for 
-    read-only compliance access, and admin keys for platform management.
-    
-    ## Jurisdiction Resolution
-    
-    The engine supports three integration paths:
-    1. **ZIP code** - Send `zip_code` and the engine resolves state, county, city, and rounding rule
-    2. **State/county/city** - Send location components and the engine resolves the rounding rule
-    3. **Explicit override** - Send `cash_rounding_mode` and `jurisdiction` for testing
-    
-    ## Enacted States (as of April 2026)
-    
-    | State | Bill | Method | Enforcement |
-    |-------|------|--------|-------------|
-    | Arizona | HB 2938 | Swedish rounding | Mandatory |
-    | Indiana | SB 243 | Three-tier operator choice | Permissive (retail) |
-    | Tennessee | HB 1744 | Symmetrical (safe harbor) | Voluntary |
-    | Washington | SHB 2334 | Symmetrical | Permissive |
-    | New Mexico | HB 291 | Delegated to Dept | Narrow (tax/MVD only) |
-    | Utah | HB 597 | Not prescribed | Narrow (alcohol only) |
-    | Idaho | S 1350 | Swedish rounding | Permissive |
-    | Oregon | HB 4178 | Symmetrical | Permissive |
+    Jurisdiction-aware cash rounding compliance for point of sale.
 
-  version: 3.6.0
+    The engine resolves where a sale happened, finds the rule that governs it on that date,
+    rounds the cash total by the method the rule prescribes, and seals the decision and its
+    statutory basis into a tamper-evident hash chain.
+
+    Amounts are integers in cents unless a field says otherwise. Timestamps are ISO 8601;
+    send the terminal's own UTC offset. Authentication is an API key in the `x-api-key` header.
   contact:
-    name: Centsless
-    email: info@centsless.org
-    url: https://centsless.org
+    name: Centsless developer support
+    email: developers@centsless.org
+    url: https://www.centsless.org
   license:
     name: Proprietary
-    url: https://centsless.org/terms
-  x-patent: "Patent Pending, Application No. 63/922,987"
+    url: https://www.centsless.org/terms
 
 servers:
   - url: https://api.centsless.org/api/v1
@@ -53,35 +28,33 @@ security:
 
 tags:
   - name: System
-    description: Health checks, version info, and system statistics
-  - name: Transactions
-    description: Process, query, and manage cash transactions with jurisdiction-aware rounding
-  - name: Receipts
-    description: Generate compliance receipts with rounding disclosures
-  - name: Overrides
-    description: Manager-approved rounding overrides with audit trails
-  - name: Voids
-    description: Void transactions with policy enforcement and normalization
-  - name: Refunds
-    description: Process refunds with rounding normalization checks
-  - name: Tipping
-    description: FLSA-compliant tip processing, pooling, and wage theft detection
+    description: Health, version and statistics. No key required for health and version.
   - name: Jurisdiction
-    description: Resolve rounding rules by ZIP code, state, county, or city
-  - name: Compliance
-    description: Void analytics, abuse detection, and override reporting
-  - name: Fraud Detection
-    description: Merchant risk profiling and fraud pattern analysis
+    description: Which rule governs a location on a date. No key required.
+  - name: Transactions
+    description: Process a sale and read sealed transactions.
+  - name: Receipts
+    description: Render a sealed transaction as a receipt.
+  - name: Overrides, voids and refunds
+    description: Reversals and adjustments, hash-linked to the original.
+  - name: Merchant settings
+    description: Early adoption, operator choice and local adoption per merchant.
+  - name: Tipping
+    description: Tips, pools, payouts and compliance checks.
+  - name: Partner
+    description: Partner-key endpoints for registering and managing merchants.
+  - name: Locations
+    description: Registered terminal locations, their boundary resolution and review.
+  - name: Compliance and fraud
+    description: Void analytics, override reports and risk profiles.
   - name: Audit
-    description: Immutable audit logs, hash chain verification, and security incidents
+    description: Audit logs, security incidents and hash chain verification.
   - name: Export
-    description: 53-field CSV export for compliance reporting
-  - name: API Key Management
-    description: Create, list, and revoke API keys (admin only)
-  - name: Vendor Management
-    description: Provision, list, and promote POS vendor partners (admin only)
-  - name: Jurisdiction Management
-    description: Add, update, and delete jurisdiction rules (admin only)
+    description: CSV export.
+  - name: Admin
+    description: Keys, partners, vendors and jurisdiction rules. Admin key required.
+  - name: Provisioning
+    description: Called by the Centsless portal backend with the internal service key.
 
 components:
   securitySchemes:
@@ -89,671 +62,1373 @@ components:
       type: apiKey
       in: header
       name: x-api-key
-      description: |
-        API key for authentication. Keys are role-scoped:
-        - **Merchant keys** (`centsless_...`): Transaction processing, receipts, tips, exports
-        - **Auditor keys** (`centsless_...`): Read-only access to audit logs, compliance data
-        - **Admin keys**: Full platform access including key management and vendor provisioning
-        - **Partner keys** (`centsless_partner_...`): Vendor-scoped access for merchant onboarding
+      description: Role-scoped API key (admin, partner, merchant, auditor, readonly).
+    ServiceKeyAuth:
+      type: apiKey
+      in: header
+      name: x-service-key
+      description: Internal service key used by the Centsless portal backend.
+
+  parameters:
+    TransactionType:
+      name: transaction_type
+      in: query
+      description: Selects the tier where a state has more than one rule. Defaults to retail.
+      schema:
+        $ref: '#/components/schemas/TransactionType'
+    TransactionTimestamp:
+      name: transaction_timestamp
+      in: query
+      description: ISO 8601 timestamp with the terminal's UTC offset; sets the local calendar date for activation. Defaults to now.
+      schema:
+        type: string
+        format: date-time
+        example: "2026-11-01T09:00:00-05:00"
+    EarlyAdoption:
+      name: early_adoption
+      in: query
+      description: Evaluate as if the merchant had opted in to early adoption.
+      schema:
+        type: boolean
+    LocalAdoption:
+      name: local_adoption
+      in: query
+      description: Evaluate as if the locality had adopted its local-option authority.
+      schema:
+        type: boolean
 
   schemas:
-    TransactionRequest:
-      type: object
-      required:
-        - merchant_id
-        - subtotal_cents
-        - tax_total_cents
-        - payment_method
-      properties:
-        merchant_id:
-          type: string
-          example: "MERCHANT-001"
-          description: Unique merchant identifier
-        store_id:
-          type: string
-          description: Store location identifier
-        terminal_id:
-          type: string
-          description: POS terminal identifier
-        cashier_id:
-          type: string
-          description: Cashier or employee identifier
-        subtotal_cents:
-          type: integer
-          example: 523
-          description: Pre-tax subtotal in cents
-        tax_total_cents:
-          type: integer
-          example: 200
-          description: Sales tax in cents (always calculated on pre-rounded amount)
-        payment_method:
-          type: string
-          enum: [cash, card, ebt, mobile]
-          example: "cash"
-          description: Payment tender type. Only cash transactions are rounded.
-        state:
-          type: string
-          example: "AZ"
-          description: Two-letter state code for jurisdiction resolution
-        county:
-          type: string
-          description: County name for sub-state jurisdiction resolution
-        city:
-          type: string
-          description: City name for municipal-level jurisdiction resolution
-        zip_code:
-          type: string
-          example: "85001"
-          description: ZIP code for automatic location and jurisdiction resolution
-        cash_rounding_mode:
-          type: string
-          enum: [swedish_rounding, mandatory_round_down, mandatory_round_up, symmetrical_rounding, nearest_nickel, none]
-          description: Explicit rounding mode override (for testing). Omit to use jurisdiction resolution.
-        is_split_tender:
-          type: boolean
-          description: Whether this is a split tender transaction
-        tenders:
-          type: array
-          description: Array of tender components for split tender transactions
-          items:
-            type: object
-            properties:
-              type:
-                type: string
-                enum: [cash, card, ebt, mobile]
-              amount_cents:
-                type: integer
+    TransactionType:
+      type: string
+      enum: [retail, government_retail, government, tax_payment, state_agency, local_government, local_agency, school_district, liquor, abc_store, gaming, mvd_fee, wages, metals_recycler, currency_exchange]
+      default: retail
+      description: Who is paying whom. Selects the tier of a state rule.
 
-    TransactionResponse:
-      type: object
-      properties:
-        success:
-          type: boolean
-          example: true
-        transaction:
-          type: object
-          properties:
-            id:
-              type: string
-              example: "TXN-2026-04-14-A82C2EAA"
-            timestamp:
-              type: string
-              format: date-time
-            merchant_id:
-              type: string
-            calculation:
-              type: object
-              properties:
-                subtotal_cents:
-                  type: integer
-                  example: 523
-                tax_total_cents:
-                  type: integer
-                  example: 200
-                ledger_total_cents:
-                  type: integer
-                  example: 723
-                  description: Pre-rounded total (subtotal + tax)
-                cash_total_cents:
-                  type: integer
-                  example: 725
-                  description: Post-rounded cash total
-                rounding_delta_cents:
-                  type: integer
-                  example: 2
-                  description: Difference between ledger and cash total
-                payment_method:
-                  type: string
-                cash_rounding_mode:
-                  type: string
-                  example: "swedish_rounding"
-                jurisdiction:
-                  type: string
-                  example: "US-AZ"
-                rounding_applied:
-                  type: boolean
-                ebt_compliance_flag:
-                  type: string
-                  description: "7 CFR 278.2 compliance flag for EBT transactions"
-            compliance:
-              type: object
-              properties:
-                compliance_status:
-                  type: string
-                  enum: [PASS, WARN, FAIL]
-                  example: "PASS"
-                pass_count:
-                  type: integer
-                warn_count:
-                  type: integer
-                fail_count:
-                  type: integer
-            fraud_score:
-              type: integer
-              example: 0
-            risk_level:
-              type: string
-              enum: [NONE, LOW, MEDIUM, HIGH, CRITICAL]
-            chainPosition:
-              type: integer
-              description: Position in the immutable audit hash chain
-            auditHash:
-              type: string
-              description: SHA-256 hash of this transaction record
+    RoundingMode:
+      type: string
+      enum: [symmetrical_rounding, mandatory_round_down, mandatory_round_up, operator_choice, swedish_rounding, nearest_nickel, nearest_cent, nearest_dime, none]
 
-    OverrideRequest:
-      type: object
-      required:
-        - transaction_id
-        - employee_id
-        - employee_name
-        - reason
-        - new_cash_total_cents
-      properties:
-        transaction_id:
-          type: string
-          example: "TXN-2026-04-14-A82C2EAA"
-        employee_id:
-          type: string
-          example: "EMP-001"
-        employee_name:
-          type: string
-          example: "Test Cashier"
-        reason:
-          type: string
-          enum: [customer-request, manager-discretion, pricing-error, system-error]
-          example: "customer-request"
-        new_cash_total_cents:
-          type: integer
-          example: 720
-
-    VoidRequest:
-      type: object
-      required:
-        - original_transaction_id
-        - void_reason
-        - voided_by
-      properties:
-        original_transaction_id:
-          type: string
-          example: "TXN-2026-04-14-A82C2EAA"
-        void_reason:
-          type: string
-          enum: [customer_changed_mind, pricing_error, duplicate_transaction, employee_error, fraud_suspected]
-          example: "customer_changed_mind"
-        voided_by:
-          type: string
-          example: "EMP-001"
-
-    RefundRequest:
-      type: object
-      required:
-        - original_transaction_id
-        - refund_amount
-        - void_reason
-        - voided_by
-      properties:
-        original_transaction_id:
-          type: string
-        refund_amount:
-          type: integer
-          description: Refund amount in cents
-        void_reason:
-          type: string
-          enum: [defective_product, customer_dissatisfied, wrong_item, price_adjustment]
-        voided_by:
-          type: string
-
-    TipRequest:
-      type: object
-      required:
-        - transaction_id
-        - employee_id
-        - employee_name
-        - tip_amount
-      properties:
-        transaction_id:
-          type: string
-        employee_id:
-          type: string
-        employee_name:
-          type: string
-        tip_amount:
-          type: number
-          example: 3.50
-          description: Tip amount in dollars
-
-    TipPoolRequest:
-      type: object
-      required:
-        - pool_name
-        - tip_ids
-        - distribution_method
-        - participants
-      properties:
-        pool_name:
-          type: string
-          example: "Sunday Lunch Pool"
-        tip_ids:
-          type: array
-          items:
-            type: string
-        distribution_method:
-          type: string
-          enum: [equal, weighted, hours_based]
-        participants:
-          type: array
-          items:
-            type: object
-            properties:
-              employeeId:
-                type: string
-              employeeName:
-                type: string
-
-    TipComplianceRequest:
-      type: object
-      required:
-        - state
-        - hourly_wage
-        - average_tips_per_hour
-      properties:
-        state:
-          type: string
-          example: "IN"
-        hourly_wage:
-          type: number
-          example: 7.25
-        average_tips_per_hour:
-          type: number
-          example: 3.50
-
-    ExportRequest:
-      type: object
-      properties:
-        export_mode:
-          type: string
-          enum: [standard, full, summary]
-          default: standard
-          description: "standard (53 fields), full (all fields), summary (key fields only)"
-        start_date:
-          type: string
-          format: date-time
-        end_date:
-          type: string
-          format: date-time
-        payment_method:
-          type: string
-        compliance_status:
-          type: string
-
-    VendorProvisionRequest:
-      type: object
-      required:
-        - partner_name
-        - contact_email
-      properties:
-        partner_name:
-          type: string
-          example: "Toast POS Test"
-        contact_email:
-          type: string
-          example: "test@toasttab.com"
-        contact_name:
-          type: string
-          example: "Test Contact"
-        tier:
-          type: string
-          enum: [sandbox, production]
-          default: sandbox
-        modules:
-          type: array
-          items:
-            type: string
-          example: ["core", "audit"]
-        states:
-          type: array
-          items:
-            type: string
-          example: ["AZ", "IN", "TN", "WA"]
-        location_limit:
-          type: integer
-          example: 100
-        contract_arr:
-          type: number
-          example: 12000
-
-    JurisdictionRule:
-      type: object
-      required:
-        - lookup_key
-        - jurisdiction_id
-        - jurisdiction_level
-        - rounding_mode
-        - enforcement
-        - status
-      properties:
-        lookup_key:
-          type: string
-          example: "AZ"
-        jurisdiction_id:
-          type: string
-          example: "US-AZ"
-        jurisdiction_level:
-          type: string
-          enum: [federal, state, county, city]
-        rounding_mode:
-          type: string
-          enum: [swedish_rounding, mandatory_round_down, mandatory_round_up, symmetrical_rounding, nearest_nickel, nearest_cent, nearest_dime, none]
-        enforcement:
-          type: string
-          enum: [mandatory, permissive, voluntary, none]
-        status:
-          type: string
-          enum: [enacted, pending, proposed, failed, no_legislation]
-        legislation:
-          type: string
-          example: "AZ HB 2938"
-        effective_date:
-          type: string
-          format: date
-        notes:
-          type: string
-        source_url:
-          type: string
+    ActivationState:
+      type: string
+      enum: [in_force, default_practice, early_adoption_voluntary, pending_effective, not_binding, out_of_scope, awaiting_condition, expired, not_engine_supported]
 
     Error:
       type: object
       properties:
         error:
           type: string
+          example: INVALID_REQUEST
         message:
           type: string
+        errors:
+          type: array
+          items:
+            type: string
+          description: One entry per validation problem (400 responses).
+
+    Tender:
+      type: object
+      required: [type, amount_cents]
+      properties:
+        type:
+          type: string
+          enum: [cash, card, ebt, mobile]
+        amount_cents:
+          type: integer
+          minimum: 0
+
+    TransactionLocation:
+      type: object
+      description: A mobile terminal's location for this sale. Coordinates or an address.
+      properties:
+        latitude:
+          type: number
+        longitude:
+          type: number
+        address:
+          oneOf:
+            - type: string
+            - $ref: '#/components/schemas/AddressObject'
+        zip_code:
+          type: string
+        time_zone:
+          type: string
+          example: America/New_York
+
+    AddressObject:
+      type: object
+      properties:
+        street:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+          minLength: 2
+          maxLength: 2
+        zip:
+          type: string
+
+    TransactionRequest:
+      type: object
+      required: [merchant_id, subtotal_cents, tax_total_cents]
+      properties:
+        merchant_id:
+          type: string
+          example: SCH-1
+          description: Your merchant identifier (the external_id used at registration).
+        location_id:
+          type: string
+          example: L1
+          description: Registered location (your location_id or the internal UUID). Requires a merchant-scoped key.
+        store_id:
+          type: string
+        terminal_id:
+          type: string
+          example: REG-2
+        cashier_id:
+          type: string
+        subtotal_cents:
+          type: integer
+          minimum: 0
+          example: 1000
+        tax_total_cents:
+          type: integer
+          minimum: 0
+          example: 73
+          description: Tax computed on the pre-rounded subtotal.
+        payment_method:
+          type: string
+          enum: [cash, card, ebt, mobile]
+          description: Required unless tenders is sent.
+        tenders:
+          type: array
+          description: Split tender. Amounts must sum to subtotal plus tax.
+          items:
+            $ref: '#/components/schemas/Tender'
+        transaction_type:
+          $ref: '#/components/schemas/TransactionType'
+        transaction_timestamp:
+          type: string
+          format: date-time
+          example: "2026-10-25T14:05:00-04:00"
+          description: The POS clock with its own UTC offset. Sets the local calendar date for activation.
+        zip_code:
+          type: string
+          example: "27601"
+          description: Legacy resolution path; with location_id it is a cross-check.
+        state:
+          type: string
+        county:
+          type: string
+        city:
+          type: string
+        tribal:
+          type: string
+        transaction_location:
+          $ref: '#/components/schemas/TransactionLocation'
+        early_adoption:
+          type: boolean
+          description: Apply an enacted-but-not-yet-effective rule now; sealed as voluntary.
+        rounding_preference:
+          type: string
+          enum: [mandatory_round_down, mandatory_round_up, symmetrical_rounding]
+          description: Operator's method where the statute leaves the choice to the operator (Indiana).
+        local_adoption:
+          type: boolean
+          description: The paying agency's locality has adopted a local-option authority.
+        cash_rounding_mode:
+          $ref: '#/components/schemas/RoundingMode'
+        jurisdiction:
+          type: string
+          description: With cash_rounding_mode, an explicit override for testing. Sealed as manual with no statute.
+
+    Calculation:
+      type: object
+      properties:
+        subtotal_cents: { type: integer }
+        tax_total_cents: { type: integer }
+        ledger_total_cents: { type: integer, description: Subtotal plus tax; never changed by rounding. }
+        cash_total_cents: { type: integer, description: The amount to collect in cash. }
+        rounding_delta_cents: { type: integer }
+        rounding_applied: { type: boolean }
+        small_total_exempt: { type: boolean, description: "A statutory small-total exclusion applied (California, Connecticut)." }
+        small_total_round_up: { type: boolean, description: "A statutory small-total round-up to five cents applied (Georgia, Hawaii, Minnesota, Nebraska, Maryland)." }
+        refund_policy: { type: string, nullable: true, enum: [same_rule, exact], description: "On refunds, whether the refund was rounded under the sale's rule or issued in the exact amount (Vermont)." }
+        payment_method: { type: string }
+        cash_rounding_mode: { $ref: '#/components/schemas/RoundingMode' }
+        jurisdiction: { type: string, example: US-NC }
+        jurisdiction_level: { type: string, enum: [federal, state, county, city, tribal, override] }
+        jurisdiction_status: { type: string, description: "enacted, ordinance, default_practice, or manual for an explicit override." }
+        jurisdiction_legislation: { type: string, nullable: true }
+        jurisdiction_obligation: { type: string, nullable: true, enum: [obligates, permits] }
+        jurisdiction_citation: { type: string, nullable: true }
+        jurisdiction_tier_id: { type: string, nullable: true }
+        activation_state: { $ref: '#/components/schemas/ActivationState' }
+        jurisdiction_data_source:
+          type: string
+          enum: [database+registered_location, database+location_override, database, hardcoded]
+        state: { type: string, nullable: true }
+
+    Condition:
+      type: object
+      properties:
+        type: { type: string, example: local_adoption }
+        satisfied: { type: boolean }
+        basis: { type: string, nullable: true }
+        note: { type: string, nullable: true }
+
+    StatutoryBasis:
+      type: object
+      description: The block sealed into the record naming the governing rule and why it governed.
+      properties:
+        jurisdiction_id: { type: string }
+        jurisdiction_level: { type: string }
+        lookup_key: { type: string }
+        legislation: { type: string, nullable: true }
+        session_law: { type: string, nullable: true }
+        citation: { type: string, nullable: true }
+        status: { type: string }
+        activation_state: { $ref: '#/components/schemas/ActivationState' }
+        obligation: { type: string, nullable: true }
+        enforcement: { type: string, nullable: true }
+        rounding_mode: { $ref: '#/components/schemas/RoundingMode' }
+        tier_id: { type: string, nullable: true }
+        tier_citation: { type: string, nullable: true }
+        effective_date: { type: string, format: date, nullable: true }
+        sunset_date: { type: string, format: date, nullable: true }
+        local_transaction_date: { type: string, format: date }
+        local_date_source: { type: string, enum: [sender_offset, jurisdiction_time_zone, utc] }
+        time_zone: { type: string, nullable: true }
+        conditions:
+          type: array
+          items: { $ref: '#/components/schemas/Condition' }
+        source_url: { type: string, nullable: true }
+        last_verified: { type: string, nullable: true }
+        dataset_version: { type: string, nullable: true, example: "2026.10.25-r2" }
+
+    Activation:
+      type: object
+      properties:
+        state: { $ref: '#/components/schemas/ActivationState' }
+        governs: { type: boolean }
+        local_transaction_date: { type: string, format: date }
+        local_date_source: { type: string }
+        time_zone: { type: string, nullable: true }
+        effective_date: { type: string, format: date, nullable: true }
+        sunset_date: { type: string, format: date, nullable: true }
+        days_until_effective: { type: integer, nullable: true }
+        conditions:
+          type: array
+          items: { $ref: '#/components/schemas/Condition' }
+        reason: { type: string }
+
+    PendingRule:
+      type: object
+      properties:
+        level: { type: string }
+        lookup_key: { type: string, example: OK }
+        jurisdiction_id: { type: string }
+        legislation: { type: string, nullable: true }
+        citation: { type: string, nullable: true }
+        tier_id: { type: string, nullable: true }
+        effective_date: { type: string, format: date }
+        days_until_effective: { type: integer }
+        local_transaction_date: { type: string, format: date }
+        obligation: { type: string, nullable: true }
+        rounding_mode: { $ref: '#/components/schemas/RoundingMode' }
+
+    Tier:
+      type: object
+      properties:
+        tier_id: { type: string, example: NC-TAX }
+        tier_name: { type: string }
+        transaction_type: { type: string, nullable: true }
+        transaction_types:
+          type: array
+          nullable: true
+          items: { type: string }
+        rounding_mode: { $ref: '#/components/schemas/RoundingMode' }
+        enforcement: { type: string }
+        obligation: { type: string, enum: [obligates, permits] }
+        citation: { type: string, nullable: true }
+        effective_date: { type: string, format: date, nullable: true }
+        sunset_date: { type: string, format: date, nullable: true }
+        description: { type: string }
+        applies_to: { type: string }
+
+    LocalRecord:
+      type: object
+      properties:
+        level: { type: string, enum: [tribal, city, county] }
+        key: { type: string, example: "FL:BREVARD:TITUSVILLE" }
+        jurisdiction_id: { type: string }
+        status: { type: string }
+        activation_state: { $ref: '#/components/schemas/ActivationState' }
+        engine_supported: { type: boolean }
+        instrument: { type: string, nullable: true }
+        evidence_tier: { type: string, nullable: true }
+
+    ZipCrossCheck:
+      type: object
+      nullable: true
+      properties:
+        registered_zip: { type: string }
+        request_zip: { type: string, nullable: true }
+        geocoded_zip: { type: string, nullable: true }
+        agrees: { type: boolean }
+        note: { type: string, nullable: true }
+
+    LocationOverride:
+      type: object
+      nullable: true
+      properties:
+        requested: { type: boolean, nullable: true }
+        resolved: { type: boolean, nullable: true }
+        method: { type: string, nullable: true }
+        confidence: { type: string, nullable: true }
+        source: { type: string, nullable: true }
+        latitude: { type: number, nullable: true }
+        longitude: { type: number, nullable: true }
+        state_fips: { type: string, nullable: true }
+        county_geoid: { type: string, nullable: true }
+        place_geoid: { type: string, nullable: true }
+        aiannh_geoid: { type: string, nullable: true }
+        time_zone: { type: string, nullable: true }
+        note: { type: string, nullable: true }
+
+    LocationResolution:
+      type: object
+      nullable: true
+      description: How the place of sale was established. Null on the ZIP and name paths.
+      properties:
+        location_id: { type: string, nullable: true }
+        external_location_id: { type: string, nullable: true }
+        method: { type: string, enum: [address_geocode, zip_fallback, coordinate_lookup, manual, unresolved, request_fields] }
+        confidence: { type: string, enum: [high, medium, low, none] }
+        source: { type: string, nullable: true, example: census }
+        vintage: { type: string, nullable: true, example: Public_AR_Current/Current_Current }
+        match_type: { type: string, nullable: true }
+        geocoded_at: { type: string, format: date-time, nullable: true }
+        state_fips: { type: string, nullable: true }
+        state_abbr: { type: string, nullable: true }
+        county_geoid: { type: string, nullable: true, example: "12009" }
+        place_geoid: { type: string, nullable: true, example: "1271900" }
+        cousub_geoid: { type: string, nullable: true }
+        aiannh_geoid: { type: string, nullable: true, example: 2430R }
+        time_zone: { type: string, nullable: true }
+        needs_review: { type: boolean }
+        override: { $ref: '#/components/schemas/LocationOverride' }
+        zip_cross_check: { $ref: '#/components/schemas/ZipCrossCheck' }
+
+    SplitTender:
+      type: object
+      properties:
+        is_split_tender: { type: boolean }
+        tender_count: { type: integer }
+        cash_portion_cents: { type: integer }
+        non_cash_portion_cents: { type: integer }
+        total_after_rounding: { type: integer }
+        tenders:
+          type: array
+          items:
+            type: object
+            properties:
+              type: { type: string }
+              amount_cents: { type: integer }
+              rounding_applied: { type: boolean }
+              rounding_exempt_reason: { type: string, nullable: true }
+              rounding_delta_cents: { type: integer }
+              rounded_amount_cents: { type: integer }
+
+    Transaction:
+      type: object
+      properties:
+        id: { type: string, example: TXN-2026-10-25-8F360056 }
+        timestamp: { type: string, format: date-time }
+        merchant_id: { type: string }
+        location_id: { type: string, nullable: true }
+        store_id: { type: string, nullable: true }
+        terminal_id: { type: string, nullable: true }
+        cashier_id: { type: string, nullable: true }
+        state: { type: string, nullable: true }
+        county: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        transaction_type: { $ref: '#/components/schemas/TransactionType' }
+        transaction_timestamp: { type: string, format: date-time }
+        is_refund: { type: boolean }
+        calculation: { $ref: '#/components/schemas/Calculation' }
+        statutory_basis: { $ref: '#/components/schemas/StatutoryBasis' }
+        activation: { $ref: '#/components/schemas/Activation' }
+        pending_rules:
+          type: array
+          items: { $ref: '#/components/schemas/PendingRule' }
+        jurisdiction_tier:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/Tier'
+        location_resolution: { $ref: '#/components/schemas/LocationResolution' }
+        local_records:
+          type: array
+          items: { $ref: '#/components/schemas/LocalRecord' }
+        split_tender:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/SplitTender'
+        compliance:
+          type: object
+          properties:
+            compliance_status: { type: string, enum: [PASS, WARN, FAIL] }
+            pass_count: { type: integer }
+            warn_count: { type: integer }
+            fail_count: { type: integer }
+        fraud_score: { type: number }
+        risk_level: { type: string }
+        auditHash: { type: string }
+        previousHash: { type: string }
+        chainPosition: { type: integer }
+        hashSchema: { type: integer, example: 2 }
+        statutoryBasisHash: { type: string, nullable: true }
+        override_applied: { type: boolean }
+
+    TransactionResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        transaction: { $ref: '#/components/schemas/Transaction' }
+
+    JurisdictionResolution:
+      type: object
+      description: The rule that governs a location on a date, with activation details.
+      properties:
+        success: { type: boolean }
+        query: { type: object, additionalProperties: true }
+        lookup_key: { type: string, example: NC }
+        jurisdiction_id: { type: string, example: US-NC }
+        jurisdiction_level: { type: string }
+        rounding_mode: { $ref: '#/components/schemas/RoundingMode' }
+        enforcement: { type: string, nullable: true }
+        obligation: { type: string, nullable: true }
+        status: { type: string }
+        legislation: { type: string, nullable: true }
+        citation: { type: string, nullable: true }
+        session_law: { type: string, nullable: true }
+        effective_date: { type: string, format: date, nullable: true }
+        tier:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/Tier'
+        activation: { $ref: '#/components/schemas/Activation' }
+        small_total_rule:
+          type: object
+          nullable: true
+          properties:
+            max_cents: { type: integer }
+            treatment: { type: string, enum: [exempt, round_up_to_nickel, permitted_round_up] }
+            note: { type: string }
+        refund_policy: { type: string, enum: [same_rule, exact] }
+        notice_required: { type: boolean }
+        pending_rules:
+          type: array
+          items: { $ref: '#/components/schemas/PendingRule' }
+        evaluated:
+          type: array
+          description: Every level checked, in order, with its activation outcome.
+          items:
+            type: object
+            properties:
+              level: { type: string }
+              key: { type: string }
+              activation_state: { $ref: '#/components/schemas/ActivationState' }
+              governs: { type: boolean }
+        local_records:
+          type: array
+          items: { $ref: '#/components/schemas/LocalRecord' }
+        statutory_basis: { $ref: '#/components/schemas/StatutoryBasis' }
+        resolved_location:
+          type: object
+          additionalProperties: true
+        resolution_chain:
+          type: array
+          items:
+            type: object
+            properties:
+              level: { type: string }
+              key: { type: string }
+              found: { type: boolean }
+        source_url: { type: string, nullable: true }
+        last_verified: { type: string, nullable: true }
+        dataset_version: { type: string, nullable: true }
+        data_source: { type: string }
+
+    CountdownItem:
+      type: object
+      properties:
+        lookup_key: { type: string, example: OK }
+        jurisdiction_id: { type: string }
+        jurisdiction_level: { type: string }
+        legislation: { type: string, nullable: true }
+        citation: { type: string, nullable: true }
+        tier_id: { type: string, nullable: true }
+        tier_name: { type: string, nullable: true }
+        scope: { type: string, nullable: true }
+        obligation: { type: string, nullable: true }
+        event: { type: string, nullable: true, description: obligation_change when a tier turns from permits to obligates on the date. }
+        rounding_mode: { $ref: '#/components/schemas/RoundingMode' }
+        effective_date: { type: string, format: date }
+        days_until_effective: { type: integer }
+        as_of_local_date: { type: string, format: date }
+        time_zone: { type: string }
+
+    JurisdictionRule:
+      type: object
+      description: A row of the jurisdictions table. Admin upsert accepts any subset beyond the required fields.
+      required: [lookup_key, jurisdiction_id, jurisdiction_level, rounding_mode, enforcement, status]
+      properties:
+        lookup_key: { type: string, example: NC, description: "State code, STATE:COUNTY[:CITY], TRIBAL:NAME, or US-FEDERAL." }
+        jurisdiction_id: { type: string, example: US-NC }
+        jurisdiction_level: { type: string, enum: [federal, state, county, city, tribal] }
+        rounding_mode: { $ref: '#/components/schemas/RoundingMode' }
+        enforcement: { type: string, enum: [mandatory, voluntary, operator_choice, safe_harbor, none] }
+        status:
+          type: string
+          enum: [enacted, ordinance, default_practice, guidance, introduced, passed_one_chamber, passed_both_chambers, awaiting_sig, pending, drafting, failed, none, repealed, proposed, lead]
+          description: Only enacted and ordinance govern; default_practice is the federal fallback.
+        obligation: { type: string, nullable: true, enum: [obligates, permits] }
+        legislation: { type: string, nullable: true }
+        session_law: { type: string, nullable: true }
+        citation: { type: string, nullable: true }
+        enacted_date: { type: string, format: date, nullable: true }
+        effective_date: { type: string, format: date, nullable: true }
+        sunset_date: { type: string, format: date, nullable: true }
+        time_zone: { type: string, nullable: true, example: America/New_York }
+        scope: { type: string, nullable: true }
+        tender: { type: string, nullable: true }
+        directions: { type: array, nullable: true, items: { type: string } }
+        tax_on_pre_rounded: { type: boolean, nullable: true }
+        small_total_rule: { type: object, nullable: true, additionalProperties: true }
+        refund_policy: { type: string, enum: [same_rule, exact] }
+        notice_required: { type: boolean }
+        accepted_transaction_types: { type: array, nullable: true, items: { type: string } }
+        tiers: { type: array, nullable: true, items: { $ref: '#/components/schemas/Tier' } }
+        activation_conditions: { type: array, nullable: true, items: { $ref: '#/components/schemas/Condition' } }
+        geoid: { type: string, nullable: true, description: "Census GEOID for county, city and tribal rules." }
+        engine_supported: { type: boolean, description: False for a research record that is reported but never applied. }
+        instrument: { type: string, nullable: true }
+        evidence_tier: { type: string, nullable: true }
+        source_url: { type: string, nullable: true }
+        verification: { type: string, nullable: true, enum: [primary_source, tracker, admin_api] }
+        dataset_version: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+
+    OverrideRequest:
+      type: object
+      required: [transaction_id, employee_id, reason, new_cash_total_cents]
+      properties:
+        transaction_id: { type: string }
+        employee_id: { type: string }
+        employee_name: { type: string }
+        reason:
+          type: string
+          description: One of customer_short_exact_change, customer_requested_round_down, cash_drawer_coin_shortage, manager_approved_exception, other_see_notes, or free text.
+        new_cash_total_cents: { type: integer }
+        manager_id: { type: string, description: Required when the change exceeds two cents. }
+        notes: { type: string }
+
+    VoidRequest:
+      type: object
+      required: [original_transaction_id, void_reason, voided_by]
+      properties:
+        original_transaction_id: { type: string }
+        void_reason:
+          type: string
+          enum: [customer-request, transaction-error, incorrect-amount, duplicate-transaction, fraud-suspected, manager-override]
+        voided_by: { type: string }
+        manager_id: { type: string }
+
+    RefundRequest:
+      type: object
+      required: [original_transaction_id, refund_amount, void_reason, voided_by]
+      properties:
+        original_transaction_id: { type: string }
+        refund_amount: { type: integer, description: Cents. }
+        void_reason: { type: string }
+        voided_by: { type: string }
+
+    EarlyAdoptionSettings:
+      type: object
+      properties:
+        early_adoption: { type: boolean }
+        rounding_preference: { type: string, nullable: true, enum: [mandatory_round_down, mandatory_round_up, symmetrical_rounding] }
+        local_adoption: { type: boolean }
+        basis: { type: string, nullable: true, description: The resolution or ordinance that adopted a local-option authority. }
+
+    MerchantSettings:
+      type: object
+      properties:
+        id: { type: string }
+        merchant_name: { type: string }
+        early_adoption: { type: boolean }
+        early_adoption_set_at: { type: string, format: date-time, nullable: true }
+        rounding_preference: { type: string, nullable: true }
+        local_adoption: { type: boolean }
+        local_adoption_basis: { type: string, nullable: true }
+
+    LocationInput:
+      type: object
+      properties:
+        location_id: { type: string, example: L1, description: Your identifier for the location. }
+        location_name: { type: string }
+        address:
+          oneOf:
+            - type: string
+            - $ref: '#/components/schemas/AddressObject'
+          description: Full street address. Strongly recommended.
+        zip_code: { type: string }
+        state: { type: string }
+        time_zone: { type: string, example: America/Chicago }
+        mobile: { type: boolean }
+
+    ResolutionSummary:
+      type: object
+      properties:
+        method: { type: string, enum: [address_geocode, zip_fallback, coordinate_lookup, manual, unresolved] }
+        confidence: { type: string, enum: [high, medium, low, none] }
+        source: { type: string, nullable: true }
+        vintage: { type: string, nullable: true }
+        match_type: { type: string, nullable: true }
+        geocoded_at: { type: string, format: date-time, nullable: true }
+        matched_address: { type: string, nullable: true }
+        latitude: { type: number, nullable: true }
+        longitude: { type: number, nullable: true }
+        state_fips: { type: string, nullable: true }
+        county_geoid: { type: string, nullable: true }
+        county_name: { type: string, nullable: true }
+        place_geoid: { type: string, nullable: true }
+        place_name: { type: string, nullable: true }
+        place_layer: { type: string, nullable: true, description: Incorporated Places or Census Designated Places. }
+        cousub_geoid: { type: string, nullable: true }
+        aiannh_geoid: { type: string, nullable: true }
+        aiannh_name: { type: string, nullable: true }
+        time_zone: { type: string, nullable: true }
+        mobile: { type: boolean }
+        needs_review: { type: boolean }
+        zip_cross_check: { $ref: '#/components/schemas/ZipCrossCheck' }
+        notes:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string, example: zip_mismatch }
+              detail: { type: string }
+
+    RegisteredLocation:
+      type: object
+      properties:
+        location_id: { type: string, nullable: true }
+        internal_location_id: { type: string, format: uuid }
+        zip_code: { type: string, nullable: true }
+        state: { type: string }
+        jurisdiction_id: { type: string }
+        rounding_method: { $ref: '#/components/schemas/RoundingMode' }
+        enforcement: { type: string }
+        obligation: { type: string, nullable: true }
+        legislation: { type: string, nullable: true }
+        citation: { type: string, nullable: true }
+        legislation_status: { type: string }
+        effective_date: { type: string, format: date, nullable: true }
+        tiers: { type: array, nullable: true, items: { $ref: '#/components/schemas/Tier' } }
+        accepted_transaction_types: { type: array, nullable: true, items: { type: string } }
+        governing_today:
+          type: object
+          properties:
+            lookup_key: { type: string }
+            jurisdiction_level: { type: string }
+            activation_state: { $ref: '#/components/schemas/ActivationState' }
+            rounding_mode: { $ref: '#/components/schemas/RoundingMode' }
+            obligation: { type: string, nullable: true }
+            legislation: { type: string, nullable: true }
+            citation: { type: string, nullable: true }
+            effective_date: { type: string, format: date, nullable: true }
+            days_until_effective: { type: integer, nullable: true }
+        pending_rules: { type: array, items: { $ref: '#/components/schemas/CountdownItem' } }
+        local_records: { type: array, items: { $ref: '#/components/schemas/LocalRecord' } }
+        resolution: { $ref: '#/components/schemas/ResolutionSummary' }
+        status: { type: string }
+
+    MerchantRegistration:
+      type: object
+      required: [merchant_name, external_id, locations]
+      properties:
+        merchant_name: { type: string, example: Space Coast Hardware }
+        external_id: { type: string, example: SCH-1 }
+        contact_email: { type: string, format: email }
+        locations:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/LocationInput' }
+        metadata: { type: object, additionalProperties: true }
+
+    MerchantRegistrationResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        merchant:
+          type: object
+          properties:
+            merchant_id: { type: string, format: uuid }
+            external_id: { type: string }
+            merchant_name: { type: string }
+            contact_email: { type: string, nullable: true }
+            status: { type: string }
+            api_key: { type: string, description: Shown once. Store it. }
+            locations: { type: array, items: { $ref: '#/components/schemas/RegisteredLocation' } }
+            portal_account:
+              type: object
+              nullable: true
+              additionalProperties: true
+
+    LocationPatch:
+      type: object
+      properties:
+        address:
+          oneOf:
+            - type: string
+            - $ref: '#/components/schemas/AddressObject'
+        zip_code: { type: string }
+        time_zone: { type: string, description: IANA zone. }
+        mobile: { type: boolean }
+        location_name: { type: string }
+
+    PartnerCreate:
+      type: object
+      required: [partner_name, contact_email]
+      properties:
+        partner_name: { type: string }
+        contact_email: { type: string, format: email }
+
+    VendorProvisionRequest:
+      type: object
+      required: [partner_name, contact_email]
+      properties:
+        partner_name: { type: string }
+        contact_email: { type: string, format: email }
+        contact_name: { type: string }
+        tier: { type: string, enum: [sandbox, production], default: sandbox }
+        modules: { type: array, items: { type: string }, example: [core, audit] }
+        states: { type: array, items: { type: string }, example: [FL, NC] }
+        location_limit: { type: integer }
+        contract_arr: { type: number }
+        effective_date: { type: string, format: date }
+        deal_id: { type: string }
+        docusign_msa_id: { type: string }
+
+    ExportRequest:
+      type: object
+      properties:
+        export_mode: { type: string, enum: [standard, full, summary], default: standard }
+        start_date: { type: string, format: date-time }
+        end_date: { type: string, format: date-time }
+        payment_method: { type: string }
+        compliance_status: { type: string }
+        merchant_id: { type: string }
+
+    TipRequest:
+      type: object
+      required: [transaction_id, employee_id, tip_amount]
+      properties:
+        transaction_id: { type: string }
+        employee_id: { type: string }
+        employee_name: { type: string }
+        tip_amount: { type: number, description: Dollars. }
+        store_id: { type: string }
+        terminal_id: { type: string }
+
+    TipPoolCreate:
+      type: object
+      required: [tip_ids, participants]
+      properties:
+        pool_name: { type: string }
+        tip_ids: { type: array, items: { type: string } }
+        distribution_method: { type: string, enum: [equal, weighted, hours_based] }
+        participants:
+          type: array
+          items:
+            type: object
+            properties:
+              employeeId: { type: string }
+              employeeName: { type: string }
+              weight: { type: number }
+              hours: { type: number }
+        store_id: { type: string }
+
+    TipPayout:
+      type: object
+      required: [employee_id, payout_amount]
+      properties:
+        employee_id: { type: string }
+        employee_name: { type: string }
+        payout_amount: { type: number, description: Dollars. }
+        tip_ids: { type: array, items: { type: string } }
+        pool_distribution_ids: { type: array, items: { type: string } }
+        manager_id: { type: string }
+        manager_name: { type: string }
+        store_id: { type: string }
+        notes: { type: string }
+
+    TipAdjust:
+      type: object
+      required: [tip_id, new_amount, reason]
+      properties:
+        tip_id: { type: string }
+        new_amount: { type: number, description: Dollars. }
+        reason: { type: string }
+        manager_id: { type: string }
+        manager_name: { type: string }
+        notes: { type: string }
+
+    TipCompliance:
+      type: object
+      required: [state, hourly_wage, average_tips_per_hour]
+      properties:
+        state: { type: string, example: FL }
+        hourly_wage: { type: number }
+        average_tips_per_hour: { type: number }
+
+    KeyCreate:
+      type: object
+      required: [role]
+      properties:
+        role: { type: string, enum: [merchant, auditor, readonly, partner] }
+        merchant_id: { type: string }
+        expires_in_days: { type: integer }
+
+  responses:
+    BadRequest:
+      description: Validation failed.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Missing, unknown or expired key.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: The key lacks the permission or the resource belongs to another merchant or partner.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: No such resource.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Over the per-key limit. Retry-After is set.
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
 
 paths:
-  # ============ SYSTEM ============
+  # ───────────────────────────── System ─────────────────────────────
   /health:
     get:
       tags: [System]
-      summary: Health check
-      description: Returns platform status, database connectivity, jurisdiction cache status, and compliance certifications. No authentication required.
+      summary: Health, versions and dataset
       security: []
       responses:
         '200':
-          description: System health status
-
+          description: Engine status.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: healthy }
+                  version: { type: string, example: "3.8.1" }
+                  engine_version: { type: string, example: "1.4.1" }
+                  dataset_version: { type: string, example: "2026.10.25-r2" }
+                  release_date: { type: string }
+                  database:
+                    type: object
+                    properties:
+                      connected: { type: boolean }
+                      type: { type: string }
+                  features:
+                    type: object
+                    properties:
+                      jurisdiction_service:
+                        type: object
+                        properties:
+                          cached_rules: { type: integer }
+                          enacted_states: { type: integer, example: 23 }
+                          enacted_state_codes: { type: array, items: { type: string } }
+                          pending_effective: { type: integer }
+                          federal_status: { type: string, example: default_practice }
+                          federal_legislation: { type: string, example: H.R. 10167 }
+                          dataset_version: { type: string, nullable: true }
+                          cache_loaded_at: { type: string, format: date-time }
+                      location_resolution:
+                        type: object
+                        properties:
+                          provider: { type: string, example: census }
+                          vintage: { type: string, nullable: true }
+                      hash_schema: { type: integer, example: 2 }
+                  statistics:
+                    type: object
+                    properties:
+                      total_transactions: { type: integer }
+                      chain_position: { type: integer }
   /version:
     get:
       tags: [System]
-      summary: Version info
-      description: Returns current API version, engine version, and available endpoints.
+      summary: Version and release notes
       security: []
       responses:
         '200':
-          description: Version information
-
+          description: Version information.
   /stats:
     get:
       tags: [System]
-      summary: System statistics
-      description: Returns transaction counts, hash chain status, tip totals, void/refund/override counts, and security incident summary.
+      summary: Statistics for the key's scope
       responses:
         '200':
-          description: System statistics
+          description: Counts and totals.
+        '401': { $ref: '#/components/responses/Unauthorized' }
 
-  # ============ TRANSACTIONS ============
+  # ───────────────────────────── Jurisdiction ─────────────────────────────
+  /jurisdiction/zip/{zip_code}:
+    get:
+      tags: [Jurisdiction]
+      summary: Governing rule by ZIP code
+      description: Resolves the ZIP's state and primary county and city, then the governing rule. ZIP codes cross boundaries; for a terminal, prefer a registered location.
+      security: []
+      parameters:
+        - name: zip_code
+          in: path
+          required: true
+          schema: { type: string, example: "27601" }
+        - $ref: '#/components/parameters/TransactionType'
+        - $ref: '#/components/parameters/TransactionTimestamp'
+        - $ref: '#/components/parameters/EarlyAdoption'
+        - $ref: '#/components/parameters/LocalAdoption'
+      responses:
+        '200':
+          description: The governing rule with activation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JurisdictionResolution' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /jurisdiction/{state}:
+    get:
+      tags: [Jurisdiction]
+      summary: Governing rule by state
+      security: []
+      parameters:
+        - name: state
+          in: path
+          required: true
+          schema: { type: string, example: OK }
+        - $ref: '#/components/parameters/TransactionType'
+        - $ref: '#/components/parameters/TransactionTimestamp'
+        - $ref: '#/components/parameters/EarlyAdoption'
+        - $ref: '#/components/parameters/LocalAdoption'
+      responses:
+        '200':
+          description: The governing rule with activation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JurisdictionResolution' }
+  /jurisdiction/{state}/{county}:
+    get:
+      tags: [Jurisdiction]
+      summary: Governing rule by state and county
+      security: []
+      parameters:
+        - name: state
+          in: path
+          required: true
+          schema: { type: string }
+        - name: county
+          in: path
+          required: true
+          schema: { type: string, example: WAKE }
+        - $ref: '#/components/parameters/TransactionType'
+        - $ref: '#/components/parameters/TransactionTimestamp'
+      responses:
+        '200':
+          description: The governing rule with activation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JurisdictionResolution' }
+  /jurisdiction/{state}/{county}/{city}:
+    get:
+      tags: [Jurisdiction]
+      summary: Governing rule by state, county and city
+      security: []
+      parameters:
+        - name: state
+          in: path
+          required: true
+          schema: { type: string }
+        - name: county
+          in: path
+          required: true
+          schema: { type: string }
+        - name: city
+          in: path
+          required: true
+          schema: { type: string, example: RALEIGH }
+        - $ref: '#/components/parameters/TransactionType'
+        - $ref: '#/components/parameters/TransactionTimestamp'
+      responses:
+        '200':
+          description: The governing rule with activation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JurisdictionResolution' }
+  /jurisdictions:
+    get:
+      tags: [Jurisdiction]
+      summary: List every rule
+      security: []
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, example: enacted }
+        - name: level
+          in: query
+          schema: { type: string, example: state }
+      responses:
+        '200':
+          description: Rules keyed by lookup_key.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  total: { type: integer }
+                  data_source: { type: string }
+                  federal_default: { $ref: '#/components/schemas/JurisdictionRule' }
+                  jurisdictions:
+                    type: object
+                    additionalProperties: { $ref: '#/components/schemas/JurisdictionRule' }
+  /jurisdictions/countdown:
+    get:
+      tags: [Jurisdiction]
+      summary: Rules counting down to their effective date
+      description: Every binding rule or tier whose effective date is still ahead, with days remaining as of today in the rule's own time zone. Obligation changes count as events.
+      security: []
+      parameters:
+        - name: as_of
+          in: query
+          description: Evaluate as of this instant instead of now.
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Countdown list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  as_of: { type: string, format: date-time }
+                  total: { type: integer }
+                  dataset_version: { type: string, nullable: true }
+                  federal:
+                    type: object
+                    properties:
+                      status: { type: string }
+                      legislation: { type: string }
+                  countdown:
+                    type: array
+                    items: { $ref: '#/components/schemas/CountdownItem' }
+        '503':
+          description: Countdown requires database mode.
+
+  # ───────────────────────────── Transactions ─────────────────────────────
   /transaction:
     post:
       tags: [Transactions]
-      summary: Process a transaction
-      description: |
-        Submit a transaction for jurisdiction-aware rounding calculation. The engine resolves
-        the correct rounding rule based on the merchant's location and applies it to cash
-        transactions. Card and EBT transactions pass through unrounded.
-        
-        **Jurisdiction resolution priority:**
-        1. ZIP code (resolves state, county, city, and rounding rule)
-        2. State/county/city (resolves rounding rule)
-        3. Explicit `cash_rounding_mode` override (for testing)
-        
-        **Key rules:**
-        - Sales tax is always calculated on the pre-rounded amount
-        - EBT transactions are never rounded (7 CFR 278.2)
-        - Card transactions are never rounded
-        - Every transaction receives a compliance check and fraud score
-        - Every transaction is added to the immutable audit hash chain
+      summary: Process a cash transaction
+      description: Resolves the place of sale, finds the governing rule for the transaction's type and local date, rounds the cash total, and seals the decision. Requires transaction:create.
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/TransactionRequest'
+            schema: { $ref: '#/components/schemas/TransactionRequest' }
             examples:
-              arizona_cash:
-                summary: Arizona cash transaction (Swedish rounding)
-                value:
-                  merchant_id: "TEST-001"
-                  subtotal_cents: 523
-                  tax_total_cents: 200
-                  payment_method: "cash"
-                  state: "AZ"
-              zip_resolution:
-                summary: ZIP code resolution (automatic)
-                value:
-                  merchant_id: "TEST-001"
-                  subtotal_cents: 523
-                  tax_total_cents: 200
-                  payment_method: "cash"
-                  zip_code: "85001"
-              ebt_exempt:
-                summary: EBT transaction (never rounded)
-                value:
-                  merchant_id: "TEST-001"
-                  subtotal_cents: 523
-                  tax_total_cents: 200
-                  payment_method: "ebt"
-                  state: "AZ"
+              registeredLocation:
+                summary: By registered location (recommended)
+                value: { merchant_id: SCH-1, location_id: L1, terminal_id: REG-2, subtotal_cents: 1000, tax_total_cents: 73, payment_method: cash, transaction_timestamp: "2026-10-25T14:05:00-04:00" }
+              byZip:
+                summary: By ZIP code
+                value: { merchant_id: RALEIGH-HARDWARE-01, subtotal_cents: 1000, tax_total_cents: 73, payment_method: cash, zip_code: "27601" }
+              taxPayment:
+                summary: Tax payment to a North Carolina taxing unit
+                value: { merchant_id: WAKE-COUNTY-TAX, subtotal_cents: 1000, tax_total_cents: 74, payment_method: cash, state: NC, transaction_type: tax_payment }
+              splitTender:
+                summary: EBT plus cash
+                value: { merchant_id: FL-STORE-1, subtotal_cents: 2000, tax_total_cents: 0, zip_code: "32780", tenders: [ { type: ebt, amount_cents: 1500 }, { type: cash, amount_cents: 500 } ] }
+              mobile:
+                summary: Mobile terminal with a location override
+                value: { merchant_id: TACOS-1, location_id: TRUCK-3, subtotal_cents: 1250, tax_total_cents: 81, payment_method: cash, transaction_location: { latitude: 28.61219, longitude: -80.80762 } }
       responses:
         '200':
-          description: Transaction processed successfully
+          description: The sealed transaction.
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/TransactionResponse'
-        '400':
-          description: Validation error
+              schema: { $ref: '#/components/schemas/TransactionResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: location_id is not a registered location for this merchant.
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: The registered location is inactive.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /transactions:
     get:
       tags: [Transactions]
-      summary: Query transactions
-      description: List transactions with optional filtering by merchant, state, type, and date range. Supports pagination.
+      summary: List transactions
       parameters:
         - name: merchant_id
           in: query
-          schema:
-            type: string
+          schema: { type: string }
         - name: state
           in: query
-          schema:
-            type: string
+          schema: { type: string }
         - name: type
           in: query
-          schema:
-            type: string
-            enum: [SALE, VOID, REFUND]
+          schema: { type: string, enum: [SALE, VOID, REFUND] }
+        - name: start_date
+          in: query
+          schema: { type: string, format: date-time }
+        - name: end_date
+          in: query
+          schema: { type: string, format: date-time }
         - name: limit
           in: query
-          schema:
-            type: integer
-            default: 50
+          schema: { type: integer, default: 100 }
         - name: offset
           in: query
-          schema:
-            type: integer
-            default: 0
+          schema: { type: integer, default: 0 }
       responses:
         '200':
-          description: Transaction list
-
+          description: Transactions.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  count: { type: integer }
+                  transactions:
+                    type: array
+                    items: { $ref: '#/components/schemas/Transaction' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /transaction/{id}:
     get:
       tags: [Transactions]
-      summary: Get transaction by ID
+      summary: Get a transaction
       parameters:
         - name: id
           in: path
           required: true
-          schema:
-            type: string
+          schema: { type: string }
       responses:
         '200':
-          description: Transaction details
-        '404':
-          description: Transaction not found
+          description: The sealed transaction.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransactionResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
-  # ============ RECEIPTS ============
+  # ───────────────────────────── Receipts ─────────────────────────────
   /transaction/{id}/receipt:
     get:
       tags: [Receipts]
-      summary: Generate compliance receipt
-      description: |
-        Generate a compliance receipt for a transaction. Includes rounding disclosure
-        language as required by state law (e.g., WA SHB 2334 requires disclosure).
-        
-        **Formats:**
-        - `merchant` (default): Customer-facing with rounding disclosure
-        - `audit`: Full audit receipt with hash chain and fraud score
-        - `pos`: Minimal POS format (raw cents only)
+      summary: Render a receipt
+      description: merchant (customer-facing with disclosure), pos (raw cents), or audit (full record; needs audit:read).
       parameters:
         - name: id
           in: path
           required: true
-          schema:
-            type: string
+          schema: { type: string }
         - name: format
           in: query
-          schema:
-            type: string
-            enum: [merchant, audit, pos]
-            default: merchant
+          schema: { type: string, enum: [merchant, pos, audit], default: merchant }
       responses:
         '200':
-          description: Compliance receipt
+          description: The receipt.
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
-  # ============ OVERRIDES ============
+  # ───────────────────────────── Overrides, voids, refunds ─────────────────────────────
   /transaction/override:
     post:
-      tags: [Overrides]
-      summary: Override rounding on a transaction
-      description: |
-        Apply a manager-approved override to a transaction's rounding amount.
-        Creates an immutable override audit record with employee attribution,
-        reason code, and a separate override hash.
+      tags: [Overrides, voids and refunds]
+      summary: Override a rounding result
+      description: Records a manual adjustment of the cash total after the engine's calculation. More than two cents requires manager_id. Requires transaction:override.
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/OverrideRequest'
+            schema: { $ref: '#/components/schemas/OverrideRequest' }
       responses:
         '200':
-          description: Override applied
-
-  # ============ VOIDS ============
+          description: The override record, hash-linked to the transaction.
+        '400':
+          description: OVERRIDE_DENIED when over the threshold without manager_id, or validation failed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /transaction/void:
     post:
-      tags: [Voids]
+      tags: [Overrides, voids and refunds]
       summary: Void a transaction
-      description: |
-        Void a transaction. Creates a reversal record with negative amounts.
-        Enforces time-limit, amount-threshold, and void-reason policies.
-        The rounding delta is reversed correctly. Hash chain integrity is maintained.
+      description: Within 24 hours (2 hours for EBT). Manager approval required at $100 and for incorrect-amount, fraud-suspected and manager-override. Requires transaction:void.
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/VoidRequest'
+            schema: { $ref: '#/components/schemas/VoidRequest' }
       responses:
         '200':
-          description: Transaction voided
-
-  # ============ REFUNDS ============
+          description: The void record.
+        '400':
+          description: VOID_POLICY_VIOLATION or validation failed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /transaction/refund:
     post:
-      tags: [Refunds]
-      summary: Process a refund
-      description: |
-        Process a refund with rounding normalization check. The engine verifies
-        that the refund rounding delta correctly reverses the original transaction's
-        rounding direction. Normalization failures are flagged but do not block
-        the refund.
+      tags: [Overrides, voids and refunds]
+      summary: Refund a transaction
+      description: Calculated under the sale's rule and negated so the delta reverses exactly; Vermont refunds are issued in the exact amount paid. A refund that cannot be made in coin is rejected. Requires transaction:refund.
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/RefundRequest'
+            schema: { $ref: '#/components/schemas/RefundRequest' }
       responses:
         '200':
-          description: Refund processed
+          description: The refund record.
+        '400':
+          description: Normalization check failed or validation failed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
-  # ============ TIPPING ============
+  # ───────────────────────────── Merchant settings ─────────────────────────────
+  /merchants/{merchant_id}/early-adoption:
+    put:
+      tags: [Merchant settings]
+      summary: Set early adoption, rounding preference, local adoption
+      description: A merchant key may set only its own record; an admin key any merchant's.
+      parameters:
+        - name: merchant_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EarlyAdoptionSettings' }
+      responses:
+        '200':
+          description: Updated settings.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  merchant: { $ref: '#/components/schemas/MerchantSettings' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    get:
+      tags: [Merchant settings]
+      summary: Read a merchant's settings
+      parameters:
+        - name: merchant_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Current settings.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  merchant: { $ref: '#/components/schemas/MerchantSettings' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ───────────────────────────── Tipping ─────────────────────────────
   /tip/cash:
     post:
       tags: [Tipping]
-      summary: Process a cash tip
-      description: Record a cash tip with FLSA-compliant ceiling rounding (always rounds in employee favor).
+      summary: Record a cash tip
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/TipRequest'
+            schema: { $ref: '#/components/schemas/TipRequest' }
       responses:
-        '200':
-          description: Cash tip processed
-
+        '200': { description: The tip record. }
+        '400': { $ref: '#/components/responses/BadRequest' }
   /tip/credit-card:
     post:
       tags: [Tipping]
-      summary: Process a credit card tip
-      description: Record a credit card tip with audit trail.
+      summary: Record a card tip
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/TipRequest'
+            schema: { $ref: '#/components/schemas/TipRequest' }
       responses:
-        '200':
-          description: Credit card tip processed
-
+        '200': { description: The tip record. }
+        '400': { $ref: '#/components/responses/BadRequest' }
   /tip/pool/create:
     post:
       tags: [Tipping]
       summary: Create a tip pool
-      description: Create a tip pool for distributing tips among eligible employees. Supports equal, weighted, and hours-based distribution methods.
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/TipPoolRequest'
+            schema: { $ref: '#/components/schemas/TipPoolCreate' }
       responses:
-        '200':
-          description: Tip pool created
-
+        '200': { description: The pool. }
+        '400': { $ref: '#/components/responses/BadRequest' }
   /tip/pool/distribute:
     post:
       tags: [Tipping]
       summary: Distribute a tip pool
-      description: Calculate and distribute pooled tips to participants using the defined distribution method.
       requestBody:
         required: true
         content:
@@ -762,501 +1437,593 @@ paths:
               type: object
               required: [pool_id]
               properties:
-                pool_id:
-                  type: string
+                pool_id: { type: string }
       responses:
-        '200':
-          description: Tip pool distributed
-
+        '200': { description: The distribution. }
+        '400': { $ref: '#/components/responses/BadRequest' }
   /tip/payout:
     post:
       tags: [Tipping]
-      summary: Process employee payout
-      description: Process a tip payout to an employee. Rounding always favors the employee (FLSA compliance).
+      summary: Pay an employee out
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [employee_id, employee_name, payout_amount, payout_method]
-              properties:
-                employee_id:
-                  type: string
-                employee_name:
-                  type: string
-                payout_amount:
-                  type: number
-                payout_method:
-                  type: string
-                  enum: [cash, check, direct_deposit]
+            schema: { $ref: '#/components/schemas/TipPayout' }
       responses:
-        '200':
-          description: Payout processed
-
+        '200': { description: The payout record. }
+        '400': { $ref: '#/components/responses/BadRequest' }
   /tip/adjust:
     post:
       tags: [Tipping]
-      summary: Adjust a tip amount
-      description: Adjust a previously recorded tip with reason tracking.
+      summary: Adjust a recorded tip
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [tip_id, new_amount, reason]
-              properties:
-                tip_id:
-                  type: string
-                new_amount:
-                  type: number
-                reason:
-                  type: string
+            schema: { $ref: '#/components/schemas/TipAdjust' }
       responses:
-        '200':
-          description: Tip adjusted
-
+        '200': { description: The adjustment record. }
+        '400': { $ref: '#/components/responses/BadRequest' }
   /tip/validate-compliance:
     post:
       tags: [Tipping]
-      summary: Validate tip credit compliance
-      description: Check if a merchant's tipping practices comply with state-specific tip credit regulations and FLSA requirements.
+      summary: Check a tip-credit arrangement
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/TipComplianceRequest'
+            schema: { $ref: '#/components/schemas/TipCompliance' }
       responses:
-        '200':
-          description: Compliance validation result
-
+        '200': { description: The validation result. }
+        '400': { $ref: '#/components/responses/BadRequest' }
   /analytics/tips:
     get:
       tags: [Tipping]
       summary: Tip analytics
-      description: Aggregate tip statistics including totals by payment method, average tip amounts, and pool distributions.
       responses:
-        '200':
-          description: Tip analytics
-
+        '200': { description: Analytics. }
   /analytics/tip-wage-theft:
     get:
       tags: [Tipping]
-      summary: Wage theft detection
-      description: Analyze tip patterns for potential wage theft indicators including tip skimming, unauthorized deductions, and below-minimum-wage violations.
+      summary: Wage theft signals
       responses:
-        '200':
-          description: Wage theft analysis
+        '200': { description: Signals for review. }
 
-  # ============ JURISDICTION ============
-  /jurisdiction/zip/{zip_code}:
-    get:
-      tags: [Jurisdiction]
-      summary: Resolve jurisdiction by ZIP code
-      description: |
-        Look up a ZIP code and resolve the full jurisdiction chain: state, county, city,
-        rounding mode, enforcement level, and legislation reference. Uses the 33,000+ ZIP
-        code Census database with hierarchical resolution (city > county > state > federal).
-      parameters:
-        - name: zip_code
-          in: path
-          required: true
-          schema:
-            type: string
-          example: "85001"
-      responses:
-        '200':
-          description: Jurisdiction resolution result
-
-  /jurisdiction/{state}:
-    get:
-      tags: [Jurisdiction]
-      summary: Get jurisdiction rule by state
-      parameters:
-        - name: state
-          in: path
-          required: true
-          schema:
-            type: string
-          example: "AZ"
-      responses:
-        '200':
-          description: Jurisdiction rule
-
-  /jurisdiction/{state}/{county}:
-    get:
-      tags: [Jurisdiction]
-      summary: Get jurisdiction rule by state and county
-      parameters:
-        - name: state
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: county
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Jurisdiction rule
-
-  /jurisdiction/{state}/{county}/{city}:
-    get:
-      tags: [Jurisdiction]
-      summary: Get jurisdiction rule by state, county, and city
-      parameters:
-        - name: state
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: county
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: city
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Jurisdiction rule
-
-  /jurisdictions:
-    get:
-      tags: [Jurisdiction]
-      summary: List all jurisdiction rules
-      description: Returns all jurisdiction rules in the database including enacted, pending, and proposed legislation.
-      responses:
-        '200':
-          description: All jurisdiction rules
-
-  # ============ COMPLIANCE ============
-  /analytics/voids:
-    get:
-      tags: [Compliance]
-      summary: Void analytics
-      description: Aggregate void statistics including counts, rates, amounts, and normalization check results.
-      responses:
-        '200':
-          description: Void analytics
-
-  /analytics/void-abuse:
-    get:
-      tags: [Compliance]
-      summary: Void abuse detection
-      description: Analyze void patterns for potential abuse including high void rates, normalization failures, and suspicious timing patterns.
-      responses:
-        '200':
-          description: Void abuse analysis
-
-  /overrides/report:
-    get:
-      tags: [Compliance]
-      summary: Override report
-      description: Report of all rounding overrides with employee attribution, reason codes, and delta changes.
-      responses:
-        '200':
-          description: Override report
-
-  # ============ FRAUD DETECTION ============
-  /merchant/{merchant_id}/risk-profile:
-    get:
-      tags: [Fraud Detection]
-      summary: Merchant risk profile
-      description: |
-        Generate a comprehensive risk profile for a merchant including fraud score,
-        rounding analysis (round-up/down ratios, penny ending distribution),
-        override patterns, and void rates.
-      parameters:
-        - name: merchant_id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Risk profile
-
-  /admin/fraud-overview:
-    get:
-      tags: [Fraud Detection]
-      summary: All merchants fraud overview
-      description: Rank all merchants by risk score with summary statistics. Identifies merchants with suspicious rounding patterns or high override/void rates.
-      responses:
-        '200':
-          description: Fraud overview
-
-  # ============ AUDIT ============
-  /admin/audit-logs:
-    get:
-      tags: [Audit]
-      summary: Query audit logs
-      description: Retrieve immutable audit log entries with cryptographic hashes.
-      parameters:
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 100
-        - name: event_type
-          in: query
-          schema:
-            type: string
-        - name: user_id
-          in: query
-          schema:
-            type: string
-        - name: start_date
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: end_date
-          in: query
-          schema:
-            type: string
-            format: date-time
-      responses:
-        '200':
-          description: Audit log entries
-
-  /admin/verify-hash-chain:
-    get:
-      tags: [Audit]
-      summary: Verify hash chain integrity
-      description: |
-        Verify the integrity of the entire transaction hash chain. Each transaction's
-        hash includes the previous transaction's hash, creating a tamper-evident linked
-        list. Returns the total count, verified count, break count, and details of any
-        breaks found.
-      responses:
-        '200':
-          description: Hash chain verification result
-
-  /admin/security-incidents:
-    get:
-      tags: [Audit]
-      summary: Security incidents
-      description: List security incidents including unauthorized access attempts, rate limit violations, and fraud detection alerts.
-      parameters:
-        - name: severity
-          in: query
-          schema:
-            type: string
-            enum: [LOW, MEDIUM, HIGH, CRITICAL]
-        - name: resolved
-          in: query
-          schema:
-            type: string
-            enum: ["true", "false"]
-      responses:
-        '200':
-          description: Security incidents
-
-  # ============ EXPORT ============
-  /export:
+  # ───────────────────────────── Partner ─────────────────────────────
+  /partner/merchants/register:
     post:
-      tags: [Export]
-      summary: Export transactions as CSV
-      description: |
-        Export all transactions as a CSV file with 53 fields (standard mode) or
-        key fields only (summary mode). Supports filtering by date range, payment
-        method, and compliance status. Used for compliance reporting, regulatory
-        submissions, and audit evidence.
+      tags: [Partner]
+      summary: Register a merchant and its locations
+      description: Issues the merchant key, resolves each location to its boundaries, and reports the governing rule, pending rules and local records per location. Partner key, or admin with partner_id.
+      parameters:
+        - name: partner_id
+          in: query
+          description: Admin keys only; the partner to act for.
+          schema: { type: string, format: uuid }
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/ExportRequest'
+            schema: { $ref: '#/components/schemas/MerchantRegistration' }
       responses:
-        '200':
-          description: CSV file download
+        '201':
+          description: Registered.
           content:
-            text/csv:
-              schema:
-                type: string
-
-  # ============ API KEY MANAGEMENT ============
-  /admin/keys:
+            application/json:
+              schema: { $ref: '#/components/schemas/MerchantRegistrationResponse' }
+        '400':
+          description: Validation failed or a location could not be resolved to a state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /partner/merchants/bulk-register:
     post:
-      tags: [API Key Management]
-      summary: Create an API key
-      description: Generate a new API key with role-based permissions. The raw key is returned once and cannot be retrieved again.
+      tags: [Partner]
+      summary: Register up to 500 merchants
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [role, merchant_id]
+              required: [merchants]
               properties:
-                role:
-                  type: string
-                  enum: [merchant, auditor, admin]
-                merchant_id:
-                  type: string
+                merchants:
+                  type: array
+                  maxItems: 500
+                  items: { $ref: '#/components/schemas/MerchantRegistration' }
       responses:
         '201':
-          description: Key created (raw key shown once)
+          description: At least one merchant registered; failed entries listed.
+        '400':
+          description: None registered.
+  /partner/merchants:
     get:
-      tags: [API Key Management]
-      summary: List all API keys
-      description: List all API keys with previews (raw keys are never shown after creation).
+      tags: [Partner]
+      summary: List the partner's merchants
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200': { description: Merchants with totals. }
+  /partner/merchants/{merchantId}:
+    get:
+      tags: [Partner]
+      summary: Get a merchant with its locations
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: The merchant. }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Partner]
+      summary: Update a merchant
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                merchant_name: { type: string }
+                contact_email: { type: string }
+                status: { type: string }
+      responses:
+        '200': { description: Updated. }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Partner]
+      summary: Deactivate a merchant
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Deactivated; its key is revoked. }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /partner/analytics:
+    get:
+      tags: [Partner]
+      summary: Portfolio analytics
       responses:
         '200':
-          description: API key list
+          description: Merchant and location counts, by state and by rounding method.
 
+  # ───────────────────────────── Locations ─────────────────────────────
+  /partner/merchants/{merchantId}/locations:
+    get:
+      tags: [Locations]
+      summary: List a merchant's locations with resolution status
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Locations.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  merchant_id: { type: string }
+                  locations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        internal_location_id: { type: string, format: uuid }
+                        location_id: { type: string, nullable: true }
+                        location_name: { type: string }
+                        address: { type: string, nullable: true }
+                        zip_code: { type: string, nullable: true }
+                        state: { type: string }
+                        county_name: { type: string, nullable: true }
+                        city_name: { type: string, nullable: true }
+                        jurisdiction_id: { type: string }
+                        legislation: { type: string, nullable: true }
+                        legislation_status: { type: string }
+                        status: { type: string }
+                        resolution: { $ref: '#/components/schemas/ResolutionSummary' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /partner/merchants/{merchantId}/locations/{locationId}:
+    patch:
+      tags: [Locations]
+      summary: Correct a location (re-resolves)
+      description: locationId accepts your location_id or the internal UUID. Any change to address or zip re-resolves the location.
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: locationId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LocationPatch' }
+      responses:
+        '200':
+          description: The location with its new resolution.
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /partner/merchants/{merchantId}/locations/{locationId}/resolve:
+    post:
+      tags: [Locations]
+      summary: Re-run resolution
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: locationId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The location with its new resolution.
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/locations/needs-review:
+    get:
+      tags: [Locations]
+      summary: Locations needing a human
+      description: Every active location whose resolution is missing, unresolved or flagged. Admin key.
+      parameters:
+        - name: only_unresolved
+          in: query
+          schema: { type: boolean, default: false }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 200, maximum: 1000 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200': { description: Locations with their resolution and flags. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ───────────────────────────── Compliance and fraud ─────────────────────────────
+  /analytics/voids:
+    get:
+      tags: [Compliance and fraud]
+      summary: Void analytics
+      responses:
+        '200': { description: Void volume and reasons. }
+  /analytics/void-abuse:
+    get:
+      tags: [Compliance and fraud]
+      summary: Void abuse detection
+      responses:
+        '200': { description: Employees whose void patterns are outliers. }
+  /overrides/report:
+    get:
+      tags: [Compliance and fraud]
+      summary: Override report
+      responses:
+        '200': { description: Overrides with employee attribution. }
+  /merchant/{merchant_id}/risk-profile:
+    get:
+      tags: [Compliance and fraud]
+      summary: Merchant risk profile
+      parameters:
+        - name: merchant_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Risk profile; signals for review. }
+  /admin/fraud-overview:
+    get:
+      tags: [Compliance and fraud]
+      summary: Fraud overview across merchants
+      responses:
+        '200': { description: Overview. }
+
+  # ───────────────────────────── Audit ─────────────────────────────
+  /admin/audit-logs:
+    get:
+      tags: [Audit]
+      summary: Engine audit log
+      parameters:
+        - name: event_type
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200': { description: Events with the acting key and source IP. }
+  /admin/security-incidents:
+    get:
+      tags: [Audit]
+      summary: Security incidents
+      responses:
+        '200': { description: "Rejected requests, rate-limit hits and policy violations." }
+  /admin/verify-hash-chain:
+    get:
+      tags: [Audit]
+      summary: Verify the hash chain
+      responses:
+        '200':
+          description: Chain integrity.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  chain_integrity:
+                    type: object
+                    properties:
+                      total_transactions: { type: integer }
+                      verified: { type: integer }
+                      broken: { type: integer }
+                      integrity_percentage: { type: string }
+                      breaks:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            transaction_id: { type: string }
+                            position: { type: integer }
+                            expected_hash: { type: string }
+                            actual_hash: { type: string }
+                      source: { type: string, enum: [database, memory] }
+
+  # ───────────────────────────── Export ─────────────────────────────
+  /export:
+    post:
+      tags: [Export]
+      summary: Export CSV
+      description: standard (53 fields, export:standard), full (every field, export:full), summary.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExportRequest' }
+      responses:
+        '200':
+          description: CSV.
+          content:
+            text/csv:
+              schema: { type: string }
+
+  # ───────────────────────────── Admin ─────────────────────────────
+  /admin/keys:
+    post:
+      tags: [Admin]
+      summary: Create an API key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KeyCreate' }
+      responses:
+        '201': { description: "The key, shown once." }
+    get:
+      tags: [Admin]
+      summary: List API keys
+      responses:
+        '200': { description: Keys without their secrets. }
   /admin/keys/{keyId}:
     delete:
-      tags: [API Key Management]
+      tags: [Admin]
       summary: Revoke an API key
       parameters:
         - name: keyId
           in: path
           required: true
-          schema:
-            type: string
+          schema: { type: string }
       responses:
-        '200':
-          description: Key revoked
-
-  # ============ VENDOR MANAGEMENT ============
-  /admin/vendors/provision:
+        '200': { description: Revoked. }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/partners:
     post:
-      tags: [Vendor Management]
-      summary: Provision a POS vendor
-      description: |
-        Manually provision a new POS vendor partner. Creates the partner record
-        and generates a partner API key. The raw key is returned once.
+      tags: [Admin]
+      summary: Create a partner and its key
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/VendorProvisionRequest'
+            schema: { $ref: '#/components/schemas/PartnerCreate' }
       responses:
-        '201':
-          description: Vendor provisioned
-
-  /admin/vendors:
+        '201': { description: "The partner with its key, shown once." }
     get:
-      tags: [Vendor Management]
-      summary: List all vendors
-      description: List all provisioned POS vendor partners with merchant counts and key status.
+      tags: [Admin]
+      summary: List partners
       responses:
-        '200':
-          description: Vendor list
-
-  /admin/vendors/{partnerId}/status:
+        '200': { description: Partners. }
+  /admin/partners/{partnerId}:
     get:
-      tags: [Vendor Management]
-      summary: Vendor operational status
-      description: Live operational status for a vendor including merchant counts, transaction volume, and key info.
+      tags: [Admin]
+      summary: Get a partner
       parameters:
         - name: partnerId
           in: path
           required: true
-          schema:
-            type: string
+          schema: { type: string, format: uuid }
       responses:
-        '200':
-          description: Vendor status
-
-  /admin/vendors/{partnerId}/promote:
+        '200': { description: The partner. }
+        '404': { $ref: '#/components/responses/NotFound' }
     patch:
-      tags: [Vendor Management]
-      summary: Promote vendor to production
-      description: |
-        Promote a vendor from sandbox to production tier. Requires dual-control
-        verification (two co-founders must independently verify with TOTP 2FA).
-        Deactivates the sandbox key and issues a new production key.
+      tags: [Admin]
+      summary: Update a partner
       parameters:
         - name: partnerId
           in: path
           required: true
-          schema:
-            type: string
+          schema: { type: string, format: uuid }
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               type: object
-              required: [dual_control_proof]
-              properties:
-                dual_control_proof:
-                  type: object
-                  properties:
-                    dual_control:
-                      type: boolean
-                    initiator_name:
-                      type: string
-                    confirmer_name:
-                      type: string
-                    totp_verified:
-                      type: boolean
+              additionalProperties: true
       responses:
-        '200':
-          description: Vendor promoted
-
-  # ============ JURISDICTION MANAGEMENT ============
-  /admin/jurisdictions:
+        '200': { description: Updated. }
+  /admin/partners/{partnerId}/rotate-key:
     post:
-      tags: [Jurisdiction Management]
-      summary: Add or update a jurisdiction rule
-      description: |
-        Add or update a jurisdiction rounding rule. When a governor signs a bill,
-        call this endpoint to make it live immediately. Changes propagate to the
-        in-memory cache within 5 minutes.
+      tags: [Admin]
+      summary: Rotate a partner's key
+      parameters:
+        - name: partnerId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: "The new key, shown once. The old key stops working." }
+  /admin/vendors/provision:
+    post:
+      tags: [Admin]
+      summary: Provision a vendor (manual)
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/JurisdictionRule'
+            schema: { $ref: '#/components/schemas/VendorProvisionRequest' }
       responses:
-        '200':
-          description: Jurisdiction saved
-
+        '201': { description: Provisioned. }
+  /admin/vendors:
+    get:
+      tags: [Admin]
+      summary: List vendors
+      responses:
+        '200': { description: Vendors. }
+  /admin/vendors/{partnerId}/status:
+    get:
+      tags: [Admin]
+      summary: Vendor status
+      parameters:
+        - name: partnerId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Status. }
+  /admin/vendors/{partnerId}/promote:
+    patch:
+      tags: [Admin]
+      summary: Promote a vendor to production (dual control)
+      parameters:
+        - name: partnerId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Promoted. }
+  /admin/jurisdictions:
+    post:
+      tags: [Admin]
+      summary: Add or update a jurisdiction rule
+      description: Every column the activation engine reads can be set, so a signed bill is one call, not a deploy. Live in the cache immediately.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JurisdictionRule' }
+            examples:
+              federalSigned:
+                summary: H.R. 10167 signed
+                value: { lookup_key: US-FEDERAL, jurisdiction_id: US-FEDERAL, jurisdiction_level: federal, rounding_mode: symmetrical_rounding, enforcement: safe_harbor, status: enacted, obligation: permits, legislation: Common Cents Act, citation: "Pub. L. 119-___", enacted_date: "2026-11-10", effective_date: "2026-11-10", verification: primary_source }
+              approveLocal:
+                summary: Approve a local record
+                value: { lookup_key: "PA:LANCASTER", jurisdiction_id: US-PA-LANCASTER, jurisdiction_level: county, geoid: "42071", status: ordinance, rounding_mode: mandatory_round_down, enforcement: mandatory, obligation: obligates, legislation: Resolution No. 15 of 2026, effective_date: "2026-09-01", time_zone: America/New_York, accepted_transaction_types: [government, tax_payment, local_government], engine_supported: true, verification: primary_source }
+      responses:
+        '200': { description: Saved. }
+        '400': { $ref: '#/components/responses/BadRequest' }
   /admin/jurisdictions/{lookup_key}:
     get:
-      tags: [Jurisdiction Management]
+      tags: [Admin]
       summary: Get a jurisdiction rule
       parameters:
         - name: lookup_key
           in: path
           required: true
-          schema:
-            type: string
+          schema: { type: string }
       responses:
-        '200':
-          description: Jurisdiction rule
+        '200': { description: The rule. }
+        '404': { $ref: '#/components/responses/NotFound' }
     delete:
-      tags: [Jurisdiction Management]
+      tags: [Admin]
       summary: Delete a jurisdiction rule
       parameters:
         - name: lookup_key
           in: path
           required: true
-          schema:
-            type: string
+          schema: { type: string }
       responses:
-        '200':
-          description: Jurisdiction deleted
-
+        '200': { description: Deleted. }
+        '404': { $ref: '#/components/responses/NotFound' }
   /admin/jurisdiction-status:
     get:
-      tags: [Jurisdiction Management]
-      summary: Jurisdiction cache status
-      description: Returns the number of cached jurisdiction rules, data source, and last refresh time.
+      tags: [Admin]
+      summary: Cache and data source status
       responses:
-        '200':
-          description: Cache status
+        '200': { description: Status. }
+
+  # ───────────────────────────── Provisioning ─────────────────────────────
+  /provision/partner:
+    post:
+      tags: [Provisioning]
+      summary: Provision a partner (portal backend)
+      security:
+        - ServiceKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VendorProvisionRequest' }
+      responses:
+        '201': { description: Provisioned. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /provision/partner/{partnerId}/status:
+    get:
+      tags: [Provisioning]
+      summary: Live partner status (portal backend)
+      security:
+        - ServiceKeyAuth: []
+      parameters:
+        - name: partnerId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Status. }
+  /provision/partner/{partnerId}/promote:
+    patch:
+      tags: [Provisioning]
+      summary: Promote a partner to production (portal backend)
+      security:
+        - ServiceKeyAuth: []
+      parameters:
+        - name: partnerId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Promoted. }

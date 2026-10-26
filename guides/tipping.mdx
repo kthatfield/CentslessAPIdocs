@@ -1,0 +1,30 @@
+---
+title: "Tipping"
+description: "Cash and card tips, pools, payouts and the compliance checks around them."
+---
+
+The tipping module records tips against sealed transactions, pools and distributes them, pays them out, and checks the arithmetic that labor law cares about. It needs a `merchant` key with the `tip:*` permissions.
+
+<Note>
+Tipping is adjacent to cash rounding rather than part of it. Virginia's Chapter 713 and the enrolled federal bill both reach cash wages; the engine's payout rounding, where it applies, favours the employee. The module is documented here because tip payouts are cash leaving the drawer and belong in the same evidence chain.
+</Note>
+
+## Endpoints
+
+| Endpoint | Purpose | Required fields |
+|---|---|---|
+| `POST /api/v1/tip/cash` | Record a cash tip on a transaction | `transaction_id`, `employee_id`, `tip_amount` (dollars) |
+| `POST /api/v1/tip/credit-card` | Record a card tip | `transaction_id`, `employee_id`, `tip_amount` |
+| `POST /api/v1/tip/pool/create` | Create a pool from tip ids | `tip_ids`, `participants` (`employeeId`, `employeeName`), `distribution_method` (`equal`, `weighted`, `hours_based`) |
+| `POST /api/v1/tip/pool/distribute` | Distribute a pool | `pool_id` |
+| `POST /api/v1/tip/payout` | Pay an employee out | `employee_id`, `payout_amount`; optional `tip_ids`, `pool_distribution_ids`, `manager_id` |
+| `POST /api/v1/tip/adjust` | Adjust a recorded tip | `tip_id`, `new_amount`, `reason`; `manager_id` for review |
+| `POST /api/v1/tip/validate-compliance` | Check a tip-credit arrangement | `state`, `hourly_wage`, `average_tips_per_hour` |
+| `GET /api/v1/analytics/tips` | Tip analytics | |
+| `GET /api/v1/analytics/tip-wage-theft` | Patterns that suggest tips are not reaching employees | |
+
+Tip amounts on these endpoints are in dollars, not cents, for historical reasons; the response states the unit.
+
+## Evidence
+
+Tips, pools, payouts and adjustments are each hash-linked and carry employee and manager attribution, and payouts appear in the audit log. The validate-compliance check applies the federal tip-credit minimum and the state figure where the engine has one; it is an arithmetic check, not legal advice.

@@ -1,0 +1,48 @@
+---
+title: "Decision and evidence"
+description: "The five questions the engine answers for every cash transaction, and the record it produces."
+---
+
+Cash rounding compliance is not a single rule. It is the answer to a sequence of questions, and the answer can change by terminal, by transaction type, and by date. The engine answers them in order and writes the answers into the evidence record.
+
+```text
+1. Where did the sale happen?         →  location resolution
+2. Which rules could reach it?        →  candidate chain: tribal, city, county, state, federal
+3. Which of those governs today?      →  activation: status, scope, conditions, effective date
+4. What does that rule do to cash?    →  rounding method, obligation, exclusions
+5. What proves it?                    →  hash-chained record with the statute and the location
+```
+
+## 1. Where the sale happened
+
+A registered location is resolved once to Census boundaries and stored with provenance. A transaction that carries `location_id` uses those identifiers. A transaction that carries only a ZIP code is resolved from the ZIP's primary assignment, which is less precise and is recorded as such. See [Jurisdiction resolution](/concepts/jurisdiction-resolution).
+
+## 2. Which rules could reach it
+
+Rules live at five levels. The engine builds a candidate chain from the most specific level to the least and evaluates each in turn.
+
+| Level | Keyed by | Example |
+|---|---|---|
+| Tribal | Census AIANNH GEOID | A reservation's own rule |
+| City | Census place GEOID (or state:county:city name) | A municipal collection policy |
+| County | Census county GEOID (or state:county name) | Lancaster County, PA, Resolution No. 15 of 2026 |
+| State | Two-letter code | North Carolina S.L. 2026-31 |
+| Federal | `US-FEDERAL` | H.R. 10167 as default practice |
+
+A more specific rule that governs wins. A more specific rule that does not govern (wrong scope, not yet effective, not binding) falls through to the next level, and the engine records why.
+
+## 3. Which rule governs today
+
+A rule governs only when four things are true: its status is binding, the transaction type is inside its scope, its activation conditions are satisfied, and the sale's local calendar date is on or after its effective date and before any sunset. Anything else falls through. See [Rule activation](/concepts/rule-activation).
+
+## 4. What the rule does to cash
+
+The governing rule or tier names a method (symmetrical nearest five cents, round down only, or the operator's choice), an obligation (`obligates` or `permits`), and any exclusions (California excludes totals of two cents or less). The engine applies the method to the cash total and never to the ledger total. See [Rounding methods](/concepts/rounding-methods).
+
+## 5. What proves it
+
+The transaction is sealed into a SHA-256 hash chain with a `statutory_basis` block (the law, its citation, its status, the activation state, the tier, the local date, the dataset version) and, when a registered location was used, a `location_resolution` block (method, confidence, source, vintage, identifiers). See [The audit record](/concepts/audit-record).
+
+## Why the order matters
+
+Two terminals in the same ZIP code can be in different counties. The same terminal can be governed by the federal default on October 31 and by Oklahoma's statute on November 1. A tax payment and a retail sale at the same counter in Raleigh are governed by different sections of the same session law. The engine resolves each case from the transaction's own facts and writes the reasoning down, so an auditor can replay it.

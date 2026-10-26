@@ -1,0 +1,82 @@
+---
+title: "Jurisdiction resolution"
+description: "How a terminal's address becomes the set of boundaries that decide which rule governs, and why ZIP codes are a cross-check rather than the key."
+---
+
+## The problem with ZIP codes
+
+A ZIP code is a route that mail carriers drive. It is not a boundary that a legislature drew. ZIP codes cross county lines routinely and cross city limits in most urban areas; a few cross state lines. Tribal land cannot be identified from a ZIP at all. A rule that applies at a county's own counters, or inside a city, cannot be resolved reliably from a ZIP.
+
+The engine therefore resolves a terminal's **registered street address** to the boundaries that decide jurisdiction, stores those identifiers on the location record, and uses them for every transaction from that terminal. The ZIP becomes a cross-check.
+
+## What is resolved
+
+| Identifier | Source layer | Used for |
+|---|---|---|
+| `state_fips`, `state_abbr` | States | State rules and the terminal's default time zone |
+| `county_geoid` | Counties | County rules |
+| `place_geoid`, `place_name` | Incorporated Places (or Census Designated Places) | City rules. A census designated place has no government and is recorded but noted; no city ordinance can come from one. |
+| `cousub_geoid` | County Subdivisions | Townships and similar units where they govern |
+| `aiannh_geoid` | Federal American Indian Reservations, off-reservation trust land, state reservations, Hawaiian home lands, Alaska Native areas, Oklahoma tribal statistical areas | Tribal rules. Statistical tribal layers (tribal block groups, tracts, subdivisions) are deliberately not used. |
+
+## When resolution happens
+
+Resolution runs **once at registration and again on any address change**, never on the transaction path. A transaction is a lookup of stored identifiers, so there is no geocoding latency at the register and the offline mode can carry the resolved set in its cache.
+
+## Provenance and confidence
+
+Every resolution records how it was reached.
+
+| `resolution.method` | `confidence` | Meaning |
+|---|---|---|
+| `address_geocode` | `medium` (`high` with a rooftop provider) | The street address matched. The Census geocoder interpolates along the street segment, so a terminal within a few metres of a boundary can land on the wrong side; the record carries a `street_interpolated` note. |
+| `zip_fallback` | `low` | No street match, or no street address. The state and the ZIP's primary county are used. The location is flagged `needs_review`. |
+| `unresolved` | `none` | Nothing could be resolved. The state supplied at registration, if any, is the only input. Flagged for review. |
+| `coordinate_lookup` | `high` | A mobile override resolved from coordinates. |
+
+Alongside the method, the record carries `source` (the provider), `vintage` (the boundary dataset), `match_type`, `geocoded_at`, the matched address, coordinates, and a `notes` array that explains every fallback. Nothing falls back silently.
+
+## The ZIP cross-check
+
+If the geocoded ZIP differs from the registered ZIP, the location is flagged for review and the geocoded boundaries are used. On a transaction, a request `zip_code` that differs from the registered location's ZIP is recorded in the sealed record as a disagreement; the registered location governs.
+
+```json
+"location_resolution": {
+  "method": "address_geocode",
+  "confidence": "medium",
+  "source": "census",
+  "vintage": "Public_AR_Current/Current_Current",
+  "state_abbr": "FL",
+  "county_geoid": "12009",
+  "place_geoid": "1271900",
+  "time_zone": "America/New_York",
+  "zip_cross_check": {
+    "registered_zip": "32780",
+    "request_zip": "34952",
+    "agrees": false,
+    "note": "Request ZIP differs from the registered location; the registered location governs"
+  }
+}
+```
+
+<Tip>
+Expect ZIP mismatches. The geocoder returns the ZIP of the matched street segment, and a merchant's mailing ZIP often differs. A mismatch is a prompt to confirm the address, not a failure.
+</Tip>
+
+## Time zone
+
+Each location carries a `time_zone`. It defaults to the state's primary zone and can be set per terminal, which matters in the states that span two zones (Florida, Idaho, Indiana, Kentucky, Michigan, Nebraska, North Dakota, Oregon, South Dakota, Tennessee, Texas, Kansas, Alaska). A `transaction_timestamp` that carries its own UTC offset always wins. See [Rule activation](/concepts/rule-activation).
+
+## Providers
+
+The geocoding provider is configured on the engine, not by the caller.
+
+| Provider | Notes |
+|---|---|
+| `census` (default) | U.S. Census Bureau geocoder. Public, returns FIPS geographies directly, interpolates along street segments. |
+| A rooftop commercial provider | Slots in behind the same interface for pilots that need parcel-level precision near boundaries. |
+| `none` | Disables geocoding; every location resolves by ZIP fallback at low confidence. |
+
+## Legacy paths
+
+Transactions that send only `zip_code` or `state`, `county`, `city` still work. They resolve from the ZIP lookup table or from the names given, carry `location_resolution: null`, and cannot match local rules keyed by GEOID. See [Integration paths](/integration-paths).

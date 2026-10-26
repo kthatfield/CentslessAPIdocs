@@ -1,122 +1,153 @@
 ---
-title: Quickstart
-description: Process your first transaction in under 5 minutes
+title: "Quickstart"
+description: "Confirm the API is reachable, process one cash transaction, and read the evidence it returns."
 ---
 
-# Quickstart
+This walkthrough takes about five minutes. You need an API key; see [Authentication](/authentication) for how keys are issued.
 
-This guide walks you through processing your first jurisdiction-aware cash transaction.
+<Steps>
+  <Step title="Confirm the API is reachable">
+    The health endpoint needs no key.
 
-## Prerequisites
+    ```bash
+    curl https://api.centsless.org/api/v1/health
+    ```
 
-- An API key (contact Centsless to obtain sandbox credentials)
-- A tool for making HTTP requests (curl, Postman, or your preferred language)
+    The response names the API version, the engine version, the dataset version, and how many enacted states the engine has loaded.
 
-## Step 1: Check the API is live
+    ```json
+    {
+      "status": "healthy",
+      "version": "3.8.0",
+      "engine_version": "1.4.0",
+      "dataset_version": "2026.10.25-r2",
+      "features": {
+        "jurisdiction_service": {
+          "enacted_states": 23,
+          "federal_status": "default_practice",
+          "pending_effective": 7
+        }
+      }
+    }
+    ```
+  </Step>
 
-```bash
-curl https://api.centsless.org/api/v1/health
-```
+  <Step title="Ask which rule governs a location today">
+    Jurisdiction lookups need no key either. This asks what governs a retail cash sale in Raleigh, North Carolina, today.
 
-You should see a `200 OK` response with system status.
+    ```bash
+    curl "https://api.centsless.org/api/v1/jurisdiction/zip/27601?transaction_type=retail"
+    ```
 
-## Step 2: Process a cash transaction
+    The important fields are `rounding_mode`, `obligation`, `activation.state`, and `statutory_basis`.
 
-Send a cash transaction with an Arizona ZIP code. The engine will resolve the jurisdiction and apply Swedish rounding automatically.
+    ```json
+    {
+      "lookup_key": "NC",
+      "jurisdiction_level": "state",
+      "rounding_mode": "symmetrical_rounding",
+      "obligation": "permits",
+      "legislation": "SB 595",
+      "citation": "N.C.G.S. 66-515; 18B-804A; 105-357(a1)",
+      "tier": { "tier_id": "NC-RETAIL", "citation": "N.C.G.S. 66-515 (S.L. 2026-31, s. 14.(a))" },
+      "activation": {
+        "state": "in_force",
+        "governs": true,
+        "local_transaction_date": "2026-10-25",
+        "effective_date": "2026-07-02"
+      },
+      "pending_rules": []
+    }
+    ```
 
-```bash
-curl -X POST https://api.centsless.org/api/v1/transaction \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: YOUR_API_KEY" \
-  -d '{
-    "merchant_id": "YOUR-MERCHANT-ID",
-    "subtotal_cents": 523,
-    "tax_total_cents": 200,
-    "payment_method": "cash",
-    "zip_code": "85001"
-  }'
-```
+    Change `transaction_type=retail` to `transaction_type=tax_payment` and the same ZIP resolves to a different rule: N.C.G.S. 105-357(a1), which obligates taxing units to round in-person cash tax payments down.
+  </Step>
 
-**Response:**
+  <Step title="Process a cash transaction">
+    Send the pre-tax subtotal and the tax in cents, the tender, and the location. Amounts are always integers in cents.
 
-```json
-{
-  "success": true,
-  "transaction": {
-    "id": "TXN-2026-04-14-A82C2EAA",
-    "calculation": {
-      "subtotal_cents": 523,
-      "tax_total_cents": 200,
-      "ledger_total_cents": 723,
-      "cash_total_cents": 725,
-      "rounding_delta_cents": 2,
-      "payment_method": "cash",
-      "cash_rounding_mode": "swedish_rounding",
-      "jurisdiction": "US-AZ",
-      "rounding_applied": true
-    },
-    "compliance": {
-      "compliance_status": "PASS"
-    },
-    "fraud_score": 0,
-    "risk_level": "NONE"
-  }
-}
-```
+    ```bash
+    curl -X POST https://api.centsless.org/api/v1/transaction \
+      -H "x-api-key: $CENTSLESS_API_KEY" \
+      -H "content-type: application/json" \
+      -d '{
+        "merchant_id": "RALEIGH-HARDWARE-01",
+        "terminal_id": "REG-2",
+        "subtotal_cents": 1000,
+        "tax_total_cents": 73,
+        "payment_method": "cash",
+        "zip_code": "27601",
+        "transaction_timestamp": "2026-10-25T14:05:00-04:00"
+      }'
+    ```
 
-The customer pays **$7.25** instead of $7.23. The 2-cent rounding delta is applied per Arizona HB 2938 (mandatory Swedish rounding).
+    The ledger total is $10.73. North Carolina permits symmetrical rounding to the nearest five cents, so the cash total is $10.75 and the delta is two cents.
 
-## Step 3: Try a different state
+    ```json
+    {
+      "success": true,
+      "transaction": {
+        "id": "TXN-2026-10-25-8F360056",
+        "calculation": {
+          "ledger_total_cents": 1073,
+          "cash_total_cents": 1075,
+          "rounding_delta_cents": 2,
+          "rounding_applied": true,
+          "cash_rounding_mode": "symmetrical_rounding",
+          "jurisdiction": "US-NC",
+          "jurisdiction_status": "enacted",
+          "jurisdiction_legislation": "SB 595",
+          "jurisdiction_obligation": "permits",
+          "activation_state": "in_force"
+        },
+        "statutory_basis": {
+          "legislation": "SB 595",
+          "session_law": "Session Law 2026-31, Part XIV",
+          "citation": "N.C.G.S. 66-515; 18B-804A; 105-357(a1)",
+          "status": "enacted",
+          "activation_state": "in_force",
+          "tier_id": "NC-RETAIL",
+          "local_transaction_date": "2026-10-25",
+          "local_date_source": "sender_offset",
+          "dataset_version": "2026.10.25-r2"
+        },
+        "auditHash": "7f3c…",
+        "previousHash": "a91e…",
+        "chainPosition": 85
+      }
+    }
+    ```
+  </Step>
 
-Change the state to Indiana to see a different rounding methodology:
+  <Step title="Read the evidence">
+    Every transaction can be retrieved by id, and a receipt can be rendered in three formats.
 
-```bash
-curl -X POST https://api.centsless.org/api/v1/transaction \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: YOUR_API_KEY" \
-  -d '{
-    "merchant_id": "YOUR-MERCHANT-ID",
-    "subtotal_cents": 523,
-    "tax_total_cents": 200,
-    "payment_method": "cash",
-    "state": "IN"
-  }'
-```
+    ```bash
+    curl "https://api.centsless.org/api/v1/transaction/TXN-2026-10-25-8F360056/receipt?format=audit" \
+      -H "x-api-key: $CENTSLESS_API_KEY"
+    ```
 
-Same input, same amounts, but Indiana SB 243 gives the operator a choice of rounding method. The jurisdiction-awareness is the key differentiator.
+    The `audit` format includes the hash chain position, the statutory basis, and the fraud score. The `merchant` format is customer-facing with a rounding disclosure. The `pos` format is raw cents only.
+  </Step>
+</Steps>
 
-## Step 4: Verify EBT exemption
+## What to do next
 
-EBT/SNAP transactions are never rounded, regardless of jurisdiction:
+<CardGroup cols={2}>
+  <Card title="Register merchants and terminals" icon="map-location-dot" href="/guides/register-a-merchant">
+    Registered locations are resolved to boundaries once, so transactions can be keyed by `location_id` instead of ZIP.
+  </Card>
+  <Card title="Understand activation" icon="calendar-check" href="/concepts/rule-activation">
+    Why Oklahoma returns the federal default today and its own statute on November 1.
+  </Card>
+  <Card title="Refunds, voids and overrides" icon="rotate-left" href="/guides/refunds-voids-and-overrides">
+    Reversals carry the same statute as the sale.
+  </Card>
+  <Card title="Test with Postman" icon="flask" href="/guides/testing-with-postman">
+    A collection layout that covers every endpoint.
+  </Card>
+</CardGroup>
 
-```bash
-curl -X POST https://api.centsless.org/api/v1/transaction \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: YOUR_API_KEY" \
-  -d '{
-    "merchant_id": "YOUR-MERCHANT-ID",
-    "subtotal_cents": 523,
-    "tax_total_cents": 200,
-    "payment_method": "ebt",
-    "state": "AZ"
-  }'
-```
-
-The response will show `rounding_delta_cents: 0` and `ebt_compliance_flag` confirming 7 CFR 278.2 compliance.
-
-## Step 5: Generate a receipt
-
-Using the transaction ID from Step 2:
-
-```bash
-curl https://api.centsless.org/api/v1/transaction/TXN-ID-HERE/receipt \
-  -H "x-api-key: YOUR_API_KEY"
-```
-
-The receipt includes the rounding disclosure language required by state law.
-
-## Next steps
-
-- [Jurisdiction Resolution](/jurisdiction-resolution) to understand the full resolution cascade
-- [Rounding Methods](/concepts/rounding-methods) for details on each methodology
-- [API Reference](/api-reference/overview) for the complete endpoint documentation
+<Warning>
+Send `x-api-key` as a request header. Placing it in the query string sends the key in the URL, which is logged by proxies, and the request is rejected as unauthenticated.
+</Warning>

@@ -1,0 +1,34 @@
+---
+title: "Field glossary"
+description: "The vocabulary used across requests, responses and the sealed record."
+---
+
+| Term | Meaning |
+|---|---|
+| **Ledger total** | Subtotal plus tax, in cents. The exact amount the books keep. Never changed by rounding. |
+| **Cash total** | The amount the customer pays in cash after rounding. |
+| **Rounding delta** | Cash total minus ledger total. Negative, zero or positive. |
+| **Rule** | A row of the jurisdictions table: a statute, an ordinance, or the federal default practice. |
+| **Tier** | One rule inside a state record, selected by `transaction_type`, with its own method, obligation, citation and dates. |
+| **Lookup key** | The rule's identifier: a state code (`NC`), a local key (`PA:LANCASTER`), or `US-FEDERAL`. |
+| **GEOID** | A Census Bureau geographic identifier: 2 digits for a state, 5 for a county, 7 for a place, and a letter-suffixed code for a reservation (`2430R`). |
+| **Status** | `enacted`, `ordinance`, `default_practice`, or a non-binding status (`guidance`, `introduced`, `passed_one_chamber`, `passed_both_chambers`, `awaiting_sig`, `pending`, `drafting`, `failed`, `proposed`, `lead`). |
+| **Activation state** | The outcome of the activation test for a rule on a transaction: `in_force`, `default_practice`, `early_adoption_voluntary` (govern); `pending_effective`, `not_binding`, `out_of_scope`, `awaiting_condition`, `expired`, `not_engine_supported` (do not). |
+| **Obligation** | `obligates` (the statute says shall or must) or `permits` (may). |
+| **Enforcement** | The rule's enforcement posture as recorded: `mandatory`, `voluntary`, `operator_choice`, `safe_harbor`, `none`. Kept for records written before `obligation` existed. |
+| **Local transaction date** | The sale's calendar date in the jurisdiction, used for the effective-date test. |
+| **Local date source** | How that date was derived: `sender_offset`, `jurisdiction_time_zone`, `utc`. |
+| **Statutory basis** | The block sealed into the record naming the governing rule and why it governed. |
+| **Location resolution** | The block sealed into the record describing how the place of sale was established. |
+| **Resolution method** | `address_geocode`, `zip_fallback`, `coordinate_lookup`, `manual`, `unresolved`. |
+| **Confidence** | `high`, `medium`, `low`, `none`. |
+| **Needs review** | A location flag: a person should confirm the address. Transactions are not blocked. |
+| **Engine supported** | Whether a local record has been encoded and approved to govern transactions. |
+| **Dataset version** | The release of the jurisdiction dataset the record was decided under (`2026.10.25-r2`). |
+| **Small-total rule** | A statutory rule for very small totals: `exempt` (not rounded), `round_up_to_nickel` (becomes five cents), or `permitted_round_up` (recorded, not applied). |
+| **Refund policy** | `same_rule` (the refund is rounded under the sale's rule and negated) or `exact` (Vermont: the refund is the exact amount paid). |
+| **Notice required** | The statute requires a posted notice or signage where rounding is applied (Arizona, Oregon, Vermont, Minnesota agencies). |
+| **Hash schema** | `1` for records before 3.7.0; `2` when the statutory basis and location resolution are covered by the chain hash. |
+| **Early adoption** | A merchant's election to apply an enacted-but-not-yet-effective rule now; recorded as voluntary. |
+| **Rounding preference** | The operator's method where a statute leaves the choice to the operator. |
+| **Local adoption** | A recorded fact that a locality adopted a local-option authority. |

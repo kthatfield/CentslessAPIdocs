@@ -1,0 +1,56 @@
+---
+title: "Testing with Postman"
+description: "A collection layout that exercises the engine end to end against a pilot key."
+---
+
+There is no separate sandbox. A pilot runs against the production engine with its own partner and merchant records, and test transactions are real sealed records under those merchants. Name test merchants so they are easy to exclude from reporting.
+
+## Collection variables
+
+| Variable | Value |
+|---|---|
+| `base_url` | `https://api.centsless.org` |
+| `partner_key` | Your partner key |
+| `merchant_key` | The merchant key returned by registration |
+| `merchant_id` | The `merchant_id` returned by registration |
+
+Send the key as a **header** named `x-api-key`. Placing it under Params puts it in the query string and the request is rejected.
+
+## Folders and requests
+
+<Steps>
+  <Step title="System">
+    `GET {{base_url}}/api/v1/health`, `GET {{base_url}}/api/v1/version`, `GET {{base_url}}/api/v1/jurisdictions/countdown`. No key needed. Confirm `enacted_states` and `dataset_version`.
+  </Step>
+  <Step title="Jurisdiction">
+    `GET {{base_url}}/api/v1/jurisdiction/zip/27601?transaction_type=retail`, then the same with `transaction_type=tax_payment`, then `GET {{base_url}}/api/v1/jurisdiction/OK?transaction_type=state_agency&transaction_timestamp=2026-11-01T09:00:00-05:00`. Compare `activation.state`, `tier`, and `pending_rules`.
+  </Step>
+  <Step title="Register">
+    `POST {{base_url}}/api/v1/partner/merchants/register` with the partner key and two locations in different states. Save `merchant.api_key` and `merchant.merchant_id` into the variables.
+  </Step>
+  <Step title="Transactions">
+    With the merchant key: a cash sale by `location_id`; the same with a wrong `zip_code` to see the cross-check; a card sale (no rounding); an EBT split tender; a `tax_payment` in North Carolina (round down); an Indiana retail sale dated `2026-12-01` with and without `early_adoption: true`.
+  </Step>
+  <Step title="Reversals">
+    Refund the first sale in full, then void the card sale. Fetch the audit receipt for each.
+  </Step>
+  <Step title="Evidence">
+    `GET {{base_url}}/api/v1/admin/verify-hash-chain` with an auditor or admin key. `POST {{base_url}}/api/v1/export` with `export_mode: full`.
+  </Step>
+</Steps>
+
+## Postman tests worth keeping
+
+```javascript
+pm.test("rule governed, not manual", () => {
+  const t = pm.response.json().transaction;
+  pm.expect(t.calculation.jurisdiction_status).to.not.eql("manual");
+});
+pm.test("EBT never rounded", () => {
+  const st = pm.response.json().transaction.split_tender;
+  st.tenders.filter(x => x.type === "ebt").forEach(x => pm.expect(x.rounding_applied).to.eql(false));
+});
+pm.test("statute sealed", () => {
+  pm.expect(pm.response.json().transaction.statutory_basis.legislation).to.be.a("string");
+});
+```

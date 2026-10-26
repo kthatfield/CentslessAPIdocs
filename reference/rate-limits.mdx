@@ -1,0 +1,17 @@
+---
+title: "Rate limits"
+description: "Per-key request limits and how the engine signals them."
+---
+
+Requests are limited per API key (or per source IP for unauthenticated calls) over a rolling one-minute window.
+
+| Environment | Limit |
+|---|---|
+| Production | 100 requests per minute per key |
+| `GET /api/v1/health`, `GET /api/v1/version` | Exempt |
+
+A request over the limit returns `429 RATE_LIMIT_EXCEEDED` with a `Retry-After` header in seconds, and the event is logged as a security incident.
+
+Partner keys also carry per-partner limits set at provisioning (`rate_limit_per_minute`, `bulk_rate_limit_per_minute`), which a Centsless administrator can raise for a pilot that needs more. If a POS platform expects sustained volume above the default, say so when requesting the pilot.
+
+Registered locations keep the transaction path free of geocoding, so the limit is the only per-request cost a POS integration pays. Mobile overrides geocode on the request and count the same as any other request.

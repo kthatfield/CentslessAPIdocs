@@ -1,59 +1,61 @@
 ---
-title: Authentication
-description: How to authenticate with the Centsless API
+title: "Authentication"
+description: "API keys, roles, permissions, and the internal service key."
 ---
 
-# Authentication
-
-All API requests (except `/health` and `/version`) require an API key passed in the `x-api-key` header.
-
-## Making authenticated requests
+Every endpoint except `GET /api/v1/health`, `GET /api/v1/version`, the public jurisdiction lookups, and the countdown requires an API key sent in the `x-api-key` header.
 
 ```bash
-curl -X POST https://api.centsless.org/api/v1/transaction \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: YOUR_API_KEY" \
-  -d '{
-    "merchant_id": "MERCHANT-001",
-    "subtotal_cents": 523,
-    "tax_total_cents": 200,
-    "payment_method": "cash",
-    "state": "AZ"
-  }'
+curl https://api.centsless.org/api/v1/stats \
+  -H "x-api-key: $CENTSLESS_API_KEY"
 ```
 
-## Key types
+## How keys are issued
 
-| Key Type | Prefix | Permissions | Use Case |
-|----------|--------|-------------|----------|
-| Merchant | `centsless_` | Transactions, receipts, tips, exports | POS integration |
-| Auditor | `centsless_` | Read-only audit logs, compliance data | Compliance review |
-| Admin | (custom) | Full platform access | Platform management |
-| Partner | `centsless_partner_` | Merchant onboarding, scoped access | POS vendor integration |
+Keys are issued in two ways.
 
-## Key security
+| Path | Who | What they get |
+|---|---|---|
+| Partner provisioning | A POS platform or integrator | A **partner key** (`centsless_partner_…`). Registering a merchant through the partner API issues that merchant its own **merchant key** (`centsless_merch_…`). |
+| Admin key management | Centsless | Keys of any role through `POST /api/v1/admin/keys`, with an optional expiry. |
 
-- API keys are hashed with SHA-256 before storage. Raw keys cannot be retrieved after creation.
-- Keys are shown once at creation. Store them securely.
-- Keys can be revoked immediately through the admin API or admin portal.
-- Rate limits are enforced per key: 1,000 requests/hour for sandbox, 10,000 requests/hour for production.
+There is no self-service signup and no shared test credentials. To start a pilot, [request one](https://www.centsless.org/contact) and a partner key is provisioned for you.
 
-## Error responses
+## Roles and permissions
 
-Missing or invalid API keys return a `401` status:
+Each key carries one role. The role decides which permissions the key holds, and each endpoint names the permission it requires.
 
-```json
-{
-  "error": "UNAUTHORIZED",
-  "message": "Invalid or missing API key"
-}
-```
+| Role | Permissions | Typical holder |
+|---|---|---|
+| `admin` | `*` | Centsless operations |
+| `partner` | `transaction:create`, `transaction:read`, `stats:read`, `audit:read`, `export:standard`, plus merchant onboarding under `/api/v1/partner/*` | POS platform |
+| `merchant` | `transaction:create`, `transaction:read`, `transaction:override`, `transaction:void`, `transaction:refund`, `tip:create`, `tip:pool`, `tip:payout`, `tip:analytics`, `export:standard`, `stats:read` | A merchant registered by a partner |
+| `auditor` | `transaction:read`, `audit:read`, `export:full`, `logs:read` | Compliance review, external audit |
+| `readonly` | `transaction:read`, `stats:read` | Dashboards |
 
-Insufficient permissions return a `403` status:
+A merchant key is scoped to its merchant. Transactions sent with it are linked to that merchant's record, registered locations resolve only for that merchant, and the early-adoption settings endpoint accepts only that merchant's id.
 
-```json
-{
-  "error": "FORBIDDEN",
-  "message": "Insufficient permissions for this endpoint"
-}
-```
+A partner key is scoped to its partner. It can register and manage the partner's own merchants and read analytics across them. An admin key may act on any partner's behalf by passing `partner_id` as a query parameter or `x-partner-id` as a header.
+
+## Internal service key
+
+Three provisioning endpoints under `/api/v1/provision/*` are called by Centsless's own portal backend, not by partners. They require the `INTERNAL_SERVICE_KEY` shared secret in the `x-service-key` header and are documented for completeness.
+
+## Key hygiene
+
+- Keys are stored hashed. A key is shown once, at creation, and cannot be retrieved afterward. Rotate a partner key with `POST /api/v1/admin/partners/{partnerId}/rotate-key`; the old key stops working immediately.
+- Revoke any key with `DELETE /api/v1/admin/keys/{keyId}`.
+- Keys may carry an expiry (`expires_in_days` at creation). An expired key is rejected with `401`.
+- Every rejected request (missing, invalid, or expired key; insufficient permission) is logged as a security incident with the endpoint and the source IP.
+
+## Errors
+
+| Status | `error` | Meaning |
+|---|---|---|
+| `401` | `UNAUTHORIZED` | No key, an unknown key, or an expired key |
+| `403` | `FORBIDDEN` | The key's role lacks the required permission, or the resource belongs to another merchant or partner |
+| `429` | `RATE_LIMIT_EXCEEDED` | See [Rate limits](/reference/rate-limits) |
+
+<Warning>
+Treat keys as production credentials from the first day. There is no separate sandbox environment; a pilot runs against the production engine with its own partner and merchant records.
+</Warning>

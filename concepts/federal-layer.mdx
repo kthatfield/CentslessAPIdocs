@@ -1,0 +1,54 @@
+---
+title: "The federal layer"
+description: "How H.R. 10167 is represented before and after signature, and what the engine does where no state or local rule governs."
+---
+
+## Status
+
+H.R. 10167, the Common Cents Act, passed the House by voice vote on September 14, 2026 and the Senate without amendment by unanimous consent on September 28, 2026. As of October 25, 2026 it has not been presented to the President and is not law. The engine checks nothing about this at runtime; the status lives in the `US-FEDERAL` row of the dataset and is updated by Centsless when the record changes.
+
+## What the engine does today
+
+Wherever no binding state or local rule governs a transaction, the engine applies the rounding method in Section 3 of the enrolled bill (symmetrical nearest five cents) and records the decision as **default practice**, citing the bill as passed by both chambers.
+
+```json
+"statutory_basis": {
+  "jurisdiction_id": "US-FEDERAL",
+  "jurisdiction_level": "federal",
+  "legislation": "H.R. 10167",
+  "citation": "H.R. 10167, 119th Congress, Common Cents Act, Section 3 (enrolled text)",
+  "status": "default_practice",
+  "activation_state": "default_practice",
+  "obligation": "permits",
+  "rounding_mode": "symmetrical_rounding"
+}
+```
+
+This applies to:
+
+- states with no rounding legislation;
+- states whose legislation is not binding (New York's passed bill, Texas's guidance);
+- scoped states for transaction types outside their scope (a retail sale in Utah, Oklahoma, Minnesota or New Mexico);
+- states whose law is enacted but not yet effective, unless the merchant has opted in to early adoption.
+
+In every one of those cases the sealed record says `default_practice`, not `in_force`, and lists any pending state rule with its countdown.
+
+## When the bill is signed
+
+The `US-FEDERAL` row is updated by one admin call with the Public Law number, the enactment date and the effective date the Act provides. From that effective date, every record that falls to the federal layer cites it as `enacted` and `in_force`. Records before the effective date are unchanged. No redeploy is involved.
+
+## What the enrolled text says
+
+For integrators planning for signature, the relevant points of the enrolled Section 3 are:
+
+- the rounding authority is permissive ("may round") and is conditioned on exact change not being available;
+- non-cash payment methods are excluded;
+- transactions of one or two cents may be rounded up to five cents (the engine records this provision and does not apply it on its own; Georgia, Hawaii, Minnesota and Nebraska require the same round-up under their own statutes, and California and Connecticut exclude such totals from rounding entirely);
+- an employer who chooses to round cash wages must round up;
+- Section 4 provides a safe harbor for adherence to Section 3, conditioned on that adherence. It is an evidentiary requirement, not an immunity.
+
+The interaction between the federal safe harbor and the state frameworks will depend on final enactment and later interpretation. The engine records both layers so the question can be answered against the facts of each transaction.
+
+<Note>
+Keep an eye on the [federal status page](https://www.centsless.org/intelligence/federal-legislation) for the current posture. The engine's health endpoint reports `federal_status` and `federal_legislation` so an integration can detect the change.
+</Note>

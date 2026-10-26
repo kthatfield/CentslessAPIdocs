@@ -1,0 +1,90 @@
+---
+title: "Integration paths"
+description: "Three ways to tell the engine where a sale happened, from most to least precise."
+---
+
+The engine needs to know where a sale happened. There are three ways to tell it, and they are not equal.
+
+<Tabs>
+  <Tab title="Registered location (recommended)">
+    Register each merchant location with its street address. The address is resolved once to Census boundaries (state, county, incorporated place, tribal area) and stored with provenance. Transactions carry `location_id`.
+
+    ```json
+    {
+      "merchant_id": "SCH-1",
+      "location_id": "L1",
+      "subtotal_cents": 1000,
+      "tax_total_cents": 73,
+      "payment_method": "cash"
+    }
+    ```
+
+    **Why this is the right path.** ZIP codes cross city and county lines. A county ordinance that reaches the county's own counters, or a city rule, cannot be resolved from a ZIP. The registered address can. A `zip_code` sent alongside `location_id` is treated as a cross-check and a mismatch is flagged in the sealed record.
+
+    Requires a merchant-scoped key (or `provisioned_merchant_id`). See [Register a merchant](/guides/register-a-merchant).
+  </Tab>
+
+  <Tab title="ZIP code">
+    Send `zip_code`. The engine resolves the state and the ZIP's primary county and city from its lookup table.
+
+    ```json
+    {
+      "merchant_id": "RALEIGH-HARDWARE-01",
+      "subtotal_cents": 1000,
+      "tax_total_cents": 73,
+      "payment_method": "cash",
+      "zip_code": "27601"
+    }
+    ```
+
+    **When it is enough.** State-level rules resolve correctly in almost every case; a small number of ZIP codes cross state lines. County and city rules resolve to the ZIP's primary assignment, which may not be where the terminal is. The sealed record carries `location_resolution: null` on this path.
+  </Tab>
+
+  <Tab title="State, county, city">
+    Send the components directly when the POS already knows them.
+
+    ```json
+    {
+      "merchant_id": "RALEIGH-HARDWARE-01",
+      "subtotal_cents": 1000,
+      "tax_total_cents": 73,
+      "payment_method": "cash",
+      "state": "NC",
+      "county": "WAKE",
+      "city": "RALEIGH"
+    }
+    ```
+
+    Names are matched after uppercasing and trimming. Local rules keyed by name match this path; local rules keyed by Census GEOID (the v42 default) do not, so prefer a registered location where local rules matter.
+  </Tab>
+</Tabs>
+
+## Explicit override
+
+For testing and for integrations that have resolved the rule themselves, `cash_rounding_mode` together with `jurisdiction` bypasses resolution.
+
+```json
+{
+  "merchant_id": "TEST",
+  "subtotal_cents": 1000,
+  "tax_total_cents": 73,
+  "payment_method": "cash",
+  "cash_rounding_mode": "mandatory_round_down",
+  "jurisdiction": "TEST-OVERRIDE"
+}
+```
+
+The result is sealed with `jurisdiction_status: "manual"` and no statute. Do not use this path for production transactions; the evidence record will not cite a law.
+
+## Mobile terminals
+
+A terminal that moves (a food truck, a market stall, a delivery driver) keeps its registered location as the default and may send `transaction_location` with coordinates or an address for a sale made elsewhere. The override is geocoded live and sealed as an override. See [Mobile terminals](/guides/mobile-terminals).
+
+## Which fields decide activation
+
+Whichever path you use, two more fields change what governs:
+
+| Field | Effect |
+|---|---|
+| `transaction_type` | Selects the tier where a state has more than one rule (retail, government, tax payment, liquor, and so on). Defaults to `retail`. See [Transaction types and tiers](/concepts/transaction-types-and-tiers). |
+| `transaction_timestamp` | Sets the sale's local calendar date, which decides whether an enacted rule is in force yet. Send the POS clock with its own UTC offset. See [Rule activation](/concepts/rule-activation). |

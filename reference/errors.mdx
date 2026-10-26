@@ -1,0 +1,36 @@
+---
+title: "Errors"
+description: "The error envelope and every error code the engine returns."
+---
+
+Every error is JSON with an `error` code and a human-readable `message`. Validation errors add an `errors` array with one entry per problem.
+
+```json
+{
+  "error": "INVALID_REQUEST",
+  "message": "Validation failed",
+  "errors": [
+    "tax_total_cents is required",
+    "transaction_timestamp must be an ISO 8601 timestamp (an explicit UTC offset is preferred, e.g. 2027-01-01T00:15:00-05:00)"
+  ]
+}
+```
+
+In production, `500` responses carry a generic message; the detail is in the server log and the audit log.
+
+| Status | `error` | When |
+|---|---|---|
+| 400 | `INVALID_REQUEST` | A field is missing or malformed |
+| 400 | `INVALID_ROUNDING_MODE`, `INVALID_STATUS`, `INVALID_OBLIGATION`, `INVALID_DATE` | Admin jurisdiction upsert with a bad value |
+| 400 | `VOID_POLICY_VIOLATION` | A void outside the window or without required approval |
+| 400 | `OVERRIDE_DENIED` | An override over the threshold without `manager_id` |
+| 400 | `ZIP_LOOKUP_UNAVAILABLE` | ZIP resolution requested while the database is unavailable |
+| 401 | `UNAUTHORIZED` | Missing, unknown or expired key |
+| 403 | `FORBIDDEN` | Permission missing, or resource belongs to another merchant or partner |
+| 404 | `NOT_FOUND`, `LOCATION_NOT_FOUND` | No such transaction, merchant, location or jurisdiction |
+| 409 | `LOCATION_INACTIVE` | The registered location was deactivated |
+| 429 | `RATE_LIMIT_EXCEEDED` | See [Rate limits](/reference/rate-limits); `Retry-After` is set |
+| 503 | `DATABASE_REQUIRED`, `JURISDICTION_CACHE_EMPTY` | The feature needs the database and it is unavailable |
+| 500 | `PROCESSING_ERROR`, `JURISDICTION_ERROR`, `SETTINGS_ERROR`, `VERIFICATION_ERROR` | The engine could not complete the request; nothing was sealed |
+
+Partner endpoints under `/api/v1/partner/*` return `{ "error": "<text>" }` without a code; the HTTP status carries the meaning.

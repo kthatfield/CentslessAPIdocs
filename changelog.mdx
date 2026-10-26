@@ -1,0 +1,50 @@
+---
+title: "Changelog"
+description: "Release notes for the API, the engine and the dataset."
+---
+
+<Update label="October 25, 2026" description="API 3.8.1, engine 1.4.1, dataset 2026.10.25-r2">
+  **Every enacted state read from its enacted text.** Bill, chapter and codified citations confirmed for all 23. Corrections from the text: Oklahoma's state-entity mandate at 74 O.S. 3120 (tax levies excluded) and a permissive-then-mandatory schedule for political subdivisions; Connecticut, Minnesota and Oregon use the standard symmetrical table; Alabama excludes payments to government; Hawaii, Maryland and Nebraska reach cash wages.
+
+  **Statutory small-total rules applied.** Georgia, Hawaii, Minnesota and Nebraska round $0.01 and $0.02 totals up to $0.05; Maryland rounds totals under $0.05 up; Connecticut exempts totals of four cents or less. `calculation.small_total_round_up`.
+
+  **Vermont refunds** are issued in the exact amount paid. `calculation.refund_policy`.
+
+  **New fields** on rules: `refund_policy`, `notice_required`. New transaction types `metals_recycler` (Florida chapter 538) and `currency_exchange` (Tennessee).
+</Update>
+
+<Update label="October 25, 2026" description="API 3.8.0, engine 1.4.0, dataset 2026.10.25">
+  **Location-first resolution.** Registered locations are geocoded once to Census boundaries (state, county, incorporated place, county subdivision, tribal area) with provenance and a confidence tier. Transactions can be keyed by `location_id`; a request `zip_code` becomes a cross-check. Mobile terminals can send `transaction_location`.
+
+  **Local rules by GEOID.** County, city and tribal rules match on Census identifiers. The Observatory's verified and corroborated local research records are carried as not engine-supported and reported on every transaction they reach.
+
+  **New endpoints.** `GET/PATCH /api/v1/partner/merchants/{id}/locations[/{locationId}]`, `POST …/resolve`, `GET /api/v1/admin/locations/needs-review`.
+
+  **Record.** `location_resolution` and `local_records` on every transaction; the chain hash covers the location resolution.
+</Update>
+
+<Update label="October 25, 2026" description="API 3.7.0, engine 1.3.0, dataset 2026.10.25">
+  **Effective-date activation.** Every rule and tier is evaluated against the sale's local calendar date. Enacted-but-not-yet-effective rules are reported in `pending_rules` with a countdown. `GET /api/v1/jurisdictions/countdown`.
+
+  **Binding-status guard.** Non-binding rows never round.
+
+  **23 enacted states** with bill, session law, citation, dates, time zone, obligation and scope. Six read from the enacted text (CA, IN, KY, NC, UT, VA). Tiers with their own dates and obligations for NC, KY, IN, VA, CA, OK, MN, NM, UT.
+
+  **Federal layer** follows H.R. 10167 as `default_practice` until signed.
+
+  **Statutory basis sealed** into every record (hash schema 2). Database-resolved transactions are no longer sealed as `manual`.
+
+  **Per-merchant early adoption and operator choice.** `PUT/GET /api/v1/merchants/{id}/early-adoption`.
+
+  **Fixes.** The file audit writer filed every record under merchant `UNKNOWN`; fixed. Legacy duplicate `US-XX` state rows removed.
+
+  **Request fields.** `transaction_type`, `transaction_timestamp`, `early_adoption`, `rounding_preference`, `local_adoption`.
+</Update>
+
+<Update label="April 12, 2026" description="API 3.6.0">
+  Receipt engine (`merchant`, `audit`, `pos` formats). Partner provisioning bridge and vendor management. Internal service key middleware. Three-tier key roles.
+</Update>
+
+<Update label="April 2026" description="API 3.5.0">
+  Database-backed jurisdiction service with ZIP lookup. Tipping module. Void and refund normalization. Override module with manager threshold.
+</Update>

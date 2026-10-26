@@ -1,0 +1,33 @@
+---
+title: "Receipts"
+description: "Rendering a transaction as a customer receipt, a POS receipt, or a full audit receipt."
+---
+
+`GET /api/v1/transaction/{id}/receipt?format=…` renders a sealed transaction in one of three formats. It needs `transaction:read`; the `audit` format also needs `audit:read`.
+
+| Format | For | Contents |
+|---|---|---|
+| `merchant` (default) | The customer | Line totals, the rounding adjustment, and a disclosure line naming the state law under which rounding was applied |
+| `pos` | The register | Raw cents only: ledger total, cash total, delta, rounding applied |
+| `audit` | Compliance review | Everything on the merchant receipt plus the statutory basis, activation state, location resolution, hash chain position and hashes, compliance result and fraud score |
+
+## Disclosure
+
+Several enacted statutes expect the customer to be told that rounding was applied and how (Vermont's Act 128 requires a posted notice). The merchant format includes a `jurisdiction_disclosure` block with `disclosure_required` and a `disclosure_text` the POS can print. The text names the state; the audit format carries the full citation.
+
+```json
+{
+  "receipt_format": "merchant",
+  "transaction_id": "TXN-2026-10-25-8F360056",
+  "totals": { "subtotal": "10.00", "tax": "0.73", "ledger_total": "10.73", "rounding_adjustment": "0.02", "cash_total": "10.75" },
+  "jurisdiction_disclosure": {
+    "state": "NC",
+    "disclosure_required": true,
+    "disclosure_text": "Cash rounding applied per NC law. Maximum adjustment: $0.02 per transaction."
+  }
+}
+```
+
+## Reprinting
+
+Receipts are rendered from the sealed record every time, so a reprint months later shows the rule that governed on the day of sale, not the rule that governs now.

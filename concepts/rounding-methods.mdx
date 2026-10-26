@@ -1,0 +1,52 @@
+---
+title: "Rounding methods"
+description: "The arithmetic the engine applies to a cash total, and the rules about what is never rounded."
+---
+
+The engine rounds the **cash total** the customer pays. It never changes the **ledger total** (subtotal plus tax), and sales tax is always computed on the pre-rounded amount. The difference is the `rounding_delta_cents`, which can be negative, zero or positive.
+
+## Methods
+
+| `rounding_mode` | Rule | $10.73 becomes | Used by |
+|---|---|---|---|
+| `symmetrical_rounding` | Nearest five cents. Final digits 1, 2, 6, 7 round down; 3, 4, 8, 9 round up; 0 and 5 are unchanged. | $10.75 | 22 of 23 enacted states (New Mexico delegates the method by rule); the federal default |
+| `mandatory_round_down` | Down to the next multiple of five cents; amounts under five cents round to zero. | $10.70 | Indiana taxes, fines and fees paid to government; North Carolina in-person cash tax payments |
+| `mandatory_round_up` | Up to the next multiple of five cents. | $10.75 | Florida chapter 538 recycler payments; an operator choice in Indiana |
+| `operator_choice` | The operator selects down, up or nearest. Resolved to a concrete method before calculation from the merchant's `rounding_preference`; nearest five cents is the documented default. | depends | Indiana business entities (IC 23-15-13-4) |
+| `swedish_rounding` | Same arithmetic as `symmetrical_rounding`; kept for older records. | $10.75 | Legacy records |
+| `none` | No rounding. | $10.73 | Scoped states for transaction types outside their scope, before fall-through to the federal default |
+
+`nearest_cent`, `nearest_dime` and the non-U.S. modes exist in the engine for denomination-agnostic use and are not assigned to any U.S. rule.
+
+<Note>
+The Observatory describes most states as "symmetrical." Washington's staff report labels its method "asymmetrical"; the enacted method is symmetric. Kentucky, Virginia, North Carolina, California and Indiana spell the digit table out in the statute; the engine applies the table, not the label.
+</Note>
+
+## Obligation is separate from method
+
+A rule's `obligation` is `obligates` or `permits`. The method says what rounding does; the obligation says whether the merchant must do it. Arizona and Georgia obligate merchants to round symmetrically. Florida permits it. North Carolina obligates taxing units to round down. The engine applies the method whenever the rule governs; whether a merchant that chose not to round is exposed is a question for the rule's enforcement text and counsel, and the record carries both fields so the question can be answered later.
+
+## What is never rounded
+
+- **Card, mobile and other non-cash tenders.** Rounding applies to cash only. In a split tender, only the cash portion is rounded.
+- **EBT and SNAP.** Federal benefits are never rounded under any state or local rule (7 CFR 278.2). This gate cannot be bypassed by configuration or by override. See [EBT and non-cash tender](/concepts/ebt-and-noncash-tender).
+- **The ledger total.** The exact amount stays in the books. Rounding is a cash-drawer adjustment.
+- **Statutory small-total rules.** California excludes totals of two cents or less (Civ. Code 1789.62(b)) and Connecticut totals of four cents or less; the engine returns `small_total_exempt: true` and leaves the amount alone. Georgia, Hawaii, Minnesota and Nebraska round one- and two-cent totals up to five cents, and Maryland rounds anything under five cents up to five; the engine returns `small_total_round_up: true` and collects five cents, where the symmetrical table alone would round to zero. The federal bill permits one- and two-cent totals to be rounded up; the engine records that provision and does not apply it on its own.
+
+## Refunds
+
+A refund is calculated on the absolute amount with the same rule as the sale and then negated, so the delta reverses exactly, and the refund record carries the same statute as the sale. Vermont is the exception: 9 V.S.A. 2(b)(2) requires a cash refund of a rounded sale to be issued in the exact amount initially paid, so the engine does not round Vermont refunds and returns `refund_policy: "exact"`. See [Refunds, voids and overrides](/guides/refunds-voids-and-overrides).
+
+## Worked examples
+
+| Ledger total | Rule | Cash total | Delta |
+|---|---|---|---|
+| $10.73 | NC retail (symmetrical, permits) | $10.75 | +2 |
+| $10.74 | NC tax payment (round down, obligates) | $10.70 | -4 |
+| $10.73 | IN business entity, merchant prefers round down | $10.70 | -3 |
+| $0.02 | CA merchant, operative July 1, 2027 | $0.02 | 0 (`small_total_exempt`) |
+| $0.02 | GA retail | $0.05 | +3 (`small_total_round_up`) |
+| $10.73 refund | VT retail | $10.73 | 0 (`refund_policy: exact`) |
+| $10.73 | Any rule, paid by card | $10.73 | 0 |
+| $10.73 | Any rule, paid with EBT | $10.73 | 0 |
+| $20.00, $15.00 EBT and $5.00 cash | FL retail | EBT $15.00, cash $5.00 | 0 |

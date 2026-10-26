@@ -1,0 +1,162 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Centsless Developer Documentation",
+  "description": "Jurisdiction-aware cash rounding compliance for point of sale: the Decision and Evidence Engine API.",
+  "colors": {
+    "primary": "#C87533",
+    "light": "#D9925A",
+    "dark": "#A85F26"
+  },
+  "logo": {
+    "light": "/logo/light.png",
+    "dark": "/logo/dark.png",
+    "href": "https://www.centsless.org"
+  },
+  "favicon": "/favicon.png",
+  "fonts": {
+    "heading": {
+      "family": "DM Serif Display"
+    },
+    "body": {
+      "family": "Source Serif 4"
+    }
+  },
+  "appearance": {
+    "default": "light"
+  },
+  "background": {
+    "color": {
+      "light": "#F7F3EE",
+      "dark": "#141210"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting started",
+            "pages": [
+              "index",
+              "quickstart",
+              "authentication",
+              "integration-paths"
+            ]
+          },
+          {
+            "group": "How the engine decides",
+            "pages": [
+              "concepts/decision-and-evidence",
+              "concepts/jurisdiction-resolution",
+              "concepts/rule-activation",
+              "concepts/rounding-methods",
+              "concepts/transaction-types-and-tiers",
+              "concepts/enacted-states",
+              "concepts/federal-layer",
+              "concepts/local-rules",
+              "concepts/ebt-and-noncash-tender",
+              "concepts/audit-record"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/register-a-merchant",
+              "guides/process-a-transaction",
+              "guides/mobile-terminals",
+              "guides/locations-and-review",
+              "guides/early-adoption-and-operator-choice",
+              "guides/refunds-voids-and-overrides",
+              "guides/receipts",
+              "guides/tipping",
+              "guides/exports-and-analytics",
+              "guides/testing-with-postman"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/errors",
+              "reference/rate-limits",
+              "reference/field-glossary",
+              "changelog"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "openapi": "/openapi.yaml",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api-reference/overview"
+            ]
+          }
+        ]
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "Legislation Tracker",
+          "href": "https://www.centsless.org/intelligence/legislation-tracker",
+          "icon": "landmark"
+        },
+        {
+          "anchor": "Compliance Analysis",
+          "href": "https://www.centsless.org/intelligence/compliance-analysis",
+          "icon": "scale-balanced"
+        },
+        {
+          "anchor": "Request a pilot",
+          "href": "https://www.centsless.org/contact",
+          "icon": "handshake"
+        }
+      ]
+    }
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "centsless.org",
+        "href": "https://www.centsless.org"
+      },
+      {
+        "label": "Developer support",
+        "href": "mailto:developers@centsless.org"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Request a pilot",
+      "href": "https://www.centsless.org/contact"
+    }
+  },
+  "api": {
+    "playground": {
+      "display": "simple"
+    },
+    "examples": {
+      "languages": ["curl", "javascript", "python"]
+    }
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view"
+    ]
+  },
+  "footer": {
+    "socials": {
+      "website": "https://www.centsless.org",
+      "linkedin": "https://www.linkedin.com/company/centsless"
+    }
+  },
+  "seo": {
+    "indexing": "navigable"
+  }
+}

@@ -1,0 +1,31 @@
+---
+title: "API overview"
+description: "Base URL, authentication, versioning, and how the reference pages are organized."
+---
+
+**Base URL:** `https://api.centsless.org/api/v1`
+
+**Authentication:** `x-api-key` header. See [Authentication](/authentication).
+
+**Content type:** JSON in both directions. Amounts are integers in cents unless a field says otherwise (tip amounts are in dollars).
+
+**Versioning:** the API version is on `GET /api/v1/health` and `GET /api/v1/version` together with the engine version and the dataset version. Fields are added, not removed, within a major version; a client that ignores unknown fields keeps working.
+
+**Dates:** ISO 8601. Send timestamps with the terminal's own UTC offset.
+
+## Groups
+
+| Group | Who calls it |
+|---|---|
+| System | Anyone; no key |
+| Jurisdiction | Anyone; no key. Lookups accept `transaction_type`, `transaction_timestamp`, `early_adoption`, `local_adoption` as query parameters. |
+| Transactions, Receipts, Overrides, Voids, Refunds | Merchant and partner keys |
+| Merchant settings | Merchant key (own record) or admin |
+| Tipping | Merchant keys |
+| Partner | Partner keys; admin on a partner's behalf |
+| Locations | Partner keys; the review queue is admin |
+| Compliance, Fraud, Audit, Export | Auditor and admin keys; merchant keys for their own exports |
+| Admin | Admin keys |
+| Provisioning | Centsless portal backend with the internal service key |
+
+The pages in this tab are generated from the OpenAPI document, which is also the document to import into Postman or a client generator: [openapi.yaml](/openapi.yaml).

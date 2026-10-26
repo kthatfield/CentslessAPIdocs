@@ -1,0 +1,72 @@
+---
+title: "Transaction types and tiers"
+description: "The transaction_type vocabulary and how a state with more than one rule resolves to the right one."
+---
+
+Nine of the 23 enacted states have more than one rule, and the rules differ by who is paying whom. The engine represents each rule as a **tier** of the state record, and the transaction's `transaction_type` selects the tier.
+
+## The vocabulary
+
+Send one of these in `transaction_type`. The default is `retail`.
+
+| `transaction_type` | Meaning |
+|---|---|
+| `retail` | A merchant sale of goods or services to the public (default) |
+| `government_retail` | A State or local government unit selling as a retailer (a museum shop, a park concession) |
+| `government` | A payment to a State or local government unit that is not a tax |
+| `tax_payment` | A tax, fine or fee paid to a government unit |
+| `state_agency` | A payment to a State agency |
+| `local_government` | A payment to a city, county or other political subdivision |
+| `local_agency` | A payment to a California local agency under SB 1005 |
+| `school_district` | A payment to a school district |
+| `liquor` | A cash liquor purchase at a state store, package agency, licensee or permittee |
+| `abc_store` | A North Carolina ABC store sale |
+| `gaming` | Lottery, horse racing or charitable gaming transactions |
+| `mvd_fee` | A New Mexico Motor Vehicle Division fee |
+| `wages` | Cash wages paid to an employee (Hawaii, Maryland, Nebraska, Virginia) |
+| `metals_recycler` | A Florida secondary metals recycler paying a seller (chapter 538) |
+| `currency_exchange` | A Tennessee financial institution providing currency for a payment instrument |
+
+A type that no tier covers, and that the base rule's `accepted_transaction_types` does not list, is `out_of_scope` for that rule and falls through to the next level.
+
+## How a tier resolves
+
+A tier matches when its `transaction_type` equals the request's type or its `transaction_types` list includes it. The first matching tier in the record wins. A tier carries its own method, obligation, citation, effective date, sunset, activation conditions and small-total rule, so two tiers of one state can differ on every one of those.
+
+## The tiered states
+
+| State | Tiers | What differs |
+|---|---|---|
+| North Carolina | `NC-RETAIL` (retail, government retail), `NC-ABC` (ABC stores), `NC-TAX` (in-person cash tax payments) | Retail permits symmetrical rounding. ABC stores permit it now and must from July 1, 2027. Taxing units must round down. |
+| Kentucky | `KY-COMMERCE` (retail, government retail, gaming), `KY-GOV` (state agencies, local governments, tax), `KY-SCHOOL` (school districts) | Commerce is permitted; debts owed to the Commonwealth, local governments and school districts must round. |
+| Indiana | `IN-BUSINESS` (retail, government retail), `IN-GOV` (taxes, fines, fees, state and local units) | Business entities must round the tax-inclusive total by the operator's choice of method. Government collections round down. Both from January 1, 2027. |
+| Virginia | `VA-GENERAL` (retail, government retail, wages), `VA-LOCAL-ORDINANCE` (local government, tax) | General rule permits symmetrical rounding including cash wages. Localities may adopt a temporary ordinance for bills owed to them; expires July 1, 2027. |
+| California | `CA-MERCHANT` (retail), `CA-LOCAL-AGENCY` (local agency, government, tax) | Merchants must round from July 1, 2027, with the two-cent exclusion. Local agencies that adopt SB 1005 may round now. |
+| Oklahoma | `OK-AGENCY` (state agency, government), `OK-SUBDIVISION` (local government, tax) | State entities must round from November 1, 2026, tax levies excluded. Political subdivisions may round from November 1, 2026 and must from July 1, 2027. Retail is out of scope. |
+| Minnesota | `MN-AGENCY` (state agency, government) | State agency cash transactions only; one- and two-cent totals round up. Retail is out of scope. |
+| New Mexico | `NM-TAX` (tax payment, MVD fee, state agency) | Amounts due to the Taxation and Revenue Department, under the Property Tax Code and under the Motor Vehicle Code; method delegated by rule. Retail is out of scope. |
+| Utah | `UT-LIQUOR` (liquor) | Cash liquor purchases only. Retail is out of scope. |
+
+Florida also carries a `FL-CH538` tier for secondary metals recyclers. The remaining enacted states carry one rule; most cover `retail` and `government_retail`, Hawaii, Maryland and Nebraska add `wages`, and Alabama covers `retail` only because it excludes payments to governmental entities.
+
+## What the response shows
+
+```json
+"jurisdiction_tier": {
+  "tier_id": "NC-TAX",
+  "tier_name": "In-person cash tax payments to taxing units",
+  "transaction_type": "tax_payment",
+  "rounding_mode": "mandatory_round_down",
+  "enforcement": "mandatory",
+  "obligation": "obligates",
+  "citation": "N.C.G.S. 105-357(a1) (S.L. 2026-31, s. 14.(e))",
+  "effective_date": "2026-07-02",
+  "applies_to": "In-person cash tax payments to North Carolina taxing units from July 2, 2026"
+}
+```
+
+The tier id and citation are also sealed in `statutory_basis`.
+
+<Warning>
+If a POS cannot distinguish a tax payment from a retail sale, it should send `retail` and say so in its integration notes. Sending the wrong type produces a sealed record that cites the wrong section. The engine cannot tell the difference from the amounts.
+</Warning>

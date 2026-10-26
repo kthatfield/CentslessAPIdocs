@@ -1,0 +1,54 @@
+---
+title: "Early adoption and operator choice"
+description: "Per-merchant settings for applying a law before its effective date, choosing a method where a statute allows one, and recording local adoption."
+---
+
+Three decisions belong to the merchant, not the engine. The engine stores them per merchant and lets a request override them.
+
+| Setting | What it does | Where it matters |
+|---|---|---|
+| `early_adoption` | Apply an enacted-but-not-yet-effective rule now | Connecticut and Indiana before January 1, 2027; California merchants before July 1, 2027; Oklahoma subdivisions before July 1, 2027 |
+| `rounding_preference` | The operator's method where a statute leaves the choice to the operator | Indiana business entities (IC 23-15-13-4): round down, round up, or nearest |
+| `local_adoption` | The paying agency has recorded that its locality adopted a local-option authority | California SB 1005 local agencies; Virginia localities under Chapter 713 |
+
+## Set them per merchant
+
+```bash
+curl -X PUT "https://api.centsless.org/api/v1/merchants/$MERCHANT_ID/early-adoption" \
+  -H "x-api-key: $MERCHANT_KEY" \
+  -H "content-type: application/json" \
+  -d '{ "early_adoption": true, "rounding_preference": "mandatory_round_down" }'
+```
+
+A merchant key may set only its own record. An admin key may set any merchant's. `GET` on the same path reads the current settings, including when early adoption was switched on.
+
+## Or per request
+
+`early_adoption: true`, `rounding_preference` and `local_adoption: true` on `POST /api/v1/transaction` apply to that transaction. A request value of `true` combines with the merchant setting; a request cannot switch a merchant's early adoption off.
+
+## What early adoption does to the record
+
+The pending rule governs the calculation, and the activation state is `early_adoption_voluntary`. The sealed record never calls the transaction compliance with a law in force.
+
+```json
+"statutory_basis": {
+  "legislation": "SB 243",
+  "citation": "IC 23-15-13 (payments to business entities); …",
+  "status": "enacted",
+  "activation_state": "early_adoption_voluntary",
+  "effective_date": "2027-01-01",
+  "local_transaction_date": "2026-12-01"
+}
+```
+
+<Warning>
+Early adoption applies a method that the statute will require or permit later. It does not create a safe harbor before the effective date, and it does not change what the engine records about the federal layer. Merchants should take advice before switching it on in a state whose current rule differs from the coming one.
+</Warning>
+
+## Operator choice in Indiana
+
+From January 1, 2027, an Indiana business entity must round the tax-inclusive cash total when the second decimal is not 0 or 5, by the operator's choice of rounding down, rounding up, or to the nearest five cents. The engine resolves `operator_choice` to the merchant's `rounding_preference`; with no preference set, it applies nearest five cents and says so. A merchant preference never overrides a statutory method: Indiana's government collection tier rounds down regardless.
+
+## Local adoption
+
+California SB 1005 lets a local agency round cash payments once its governing body adopts the authority by majority-vote resolution. Virginia Chapter 713 lets a locality adopt temporary procedures by ordinance until July 1, 2027. Until `local_adoption` is recorded, those tiers report `awaiting_condition` and fall through. The merchant (or the agency's POS) records adoption with `local_adoption: true` and a `basis` (the resolution or ordinance number), which is carried into the record's `conditions`.
